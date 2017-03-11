@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::cmp::Ordering;
 
 
 extern crate cgmath;
@@ -67,8 +68,23 @@ impl Delaunay{
         d
     }
 
-    // TODO
     fn sort_points(&mut self){
+        self.points.sort_by(|a, b|{
+            debug_assert!(
+                a.x.is_finite()
+                && a.y.is_finite()
+                && b.x.is_finite()
+                && b.y.is_finite()
+                , "Delaunay do not support infinite point coordinates."
+            );
+            // since none coordinate is NaN unwrap is correct
+            let x_cmp = a.x.partial_cmp(b.x).unwrap();
+            if x_cmp == Ordering::Equal{
+                a.t.partial_cmp(b.y).unwrap()
+            }else{
+                x_cmp
+            }
+        })
     }
 
     // TODO

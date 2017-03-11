@@ -53,14 +53,15 @@ struct TriangleLike{
 
 
 /// Represent Delaunay triangulation
-struct Delaunay{
+pub struct Delaunay{
     points: Vec<Point>,
     triangles: Vec<TriangleLike>
 }
 
 
 impl Delaunay{
-    fn new(points: Vec<Point>)->Delaunay{
+    /// Construct Delaunay triangulation from given set of points
+    pub fn new(points: Vec<Point>)->Delaunay{
         let mut d = Delaunay{points: points, triangles: vec![]};
         d.sort_points();
         // since sort_points not only sorting points, but also remove duplicates
@@ -69,6 +70,7 @@ impl Delaunay{
         d.build(0..len);
         d
     }
+
 
     /// sort points in from left to right order
     ///
@@ -132,9 +134,6 @@ impl Delaunay{
     fn merge(&mut self, from: usize, sep: usize, to: usize){
         // TODO
     }
-
-
-
 
 }
 

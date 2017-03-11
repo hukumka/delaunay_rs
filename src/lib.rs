@@ -1,3 +1,6 @@
+use std::ops::Range;
+
+
 extern crate cgmath;
 use cgmath::prelude::*;
 
@@ -56,6 +59,22 @@ struct Delaunay{
 
 
 impl Delaunay{
+    fn new(points: Vec<Point>)->Delaunay{
+        let len = points.len();
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.sort_points();
+        d.build(0..len);
+        d
+    }
+
+    // TODO
+    fn sort_points(&mut self){
+    }
+
+    // TODO
+    fn build(&mut self, range: Range<usize>){
+
+    }
 }
 
 

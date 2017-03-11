@@ -1,0 +1,7 @@
+[package]
+name = "delaunay2"
+version = "0.1.0"
+authors = ["Arnold Pavel <hukumka212@gmail.com>"]
+
+[dependencies]
+cgmath="0.9"

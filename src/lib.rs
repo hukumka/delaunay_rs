@@ -9,6 +9,7 @@ type Point = cgmath::Point2<f64>;
 
 
 /// Represent point id in delaunay data
+#[derive(Debug, Clone, Copy)]
 struct PointIndex(usize);
 /// Represent triangle id in delaunay data
 trait TrIndex{
@@ -16,6 +17,7 @@ trait TrIndex{
 }
 
 /// Represent any triangle index (further check required)
+#[derive(Debug, Clone, Copy)]
 struct TriangleIndex(usize);
 impl TrIndex for TriangleIndex{
     fn id(&self)->usize{
@@ -24,6 +26,7 @@ impl TrIndex for TriangleIndex{
 }
 
 /// Represent ghost triangle index
+#[derive(Debug, Clone, Copy)]
 struct EdgeIndex(usize);
 impl TrIndex for EdgeIndex{
     fn id(&self)->usize{
@@ -46,13 +49,24 @@ impl TrIndex for EdgeIndex{
 ///     neighbors[1] - next counterclockwise edge on hull
 ///     neighbors[2] - previous counterclockwise edge on hull (next clockwise)
 ///     points kept in counterclockwise order on hull
+#[derive(Debug, Clone)]
 struct TriangleLike{
     neighbors: [TriangleIndex; 3],
     points: (PointIndex, PointIndex, Option<PointIndex>)
 }
+impl TriangleLike{
+    /// for resize fashion
+    fn default()->TriangleLike{
+        TriangleLike{
+            neighbors: [TriangleIndex(0), TriangleIndex(0), TriangleIndex(0)],
+            points: (PointIndex(0), PointIndex(0), None)
+        }
+    }
+}
 
 
 /// Represent Delaunay triangulation
+#[derive(Debug)]
 pub struct Delaunay{
     points: Vec<Point>,
     triangles: Vec<TriangleLike>
@@ -67,6 +81,7 @@ impl Delaunay{
         // since sort_points not only sorting points, but also remove duplicates
         // len calculation should be exactly here
         let len = d.points.len();
+        d.triangles.resize(len*2, TriangleLike::default());
         d.build(0..len);
         d
     }
@@ -97,6 +112,10 @@ impl Delaunay{
     }
 
     /// Construct triangulation on selected slice of points
+    ///
+    /// space for triangles must be preallocated
+    /// triangles kept in range.start*2..range..(end*2-2)
+    /// triangles (end*2-2)..end*2 reserved
     fn build(&mut self, range: Range<usize>){
         match range.len(){
             2 => self.build_2points(range),
@@ -116,7 +135,22 @@ impl Delaunay{
     /// consist of one edge convex hull
     /// through 'ghost' triangles
     fn build_2points(&mut self, range: Range<usize>){
-        // TODO
+        debug_assert!(range.len() == 2);
+
+        let i1 = TriangleIndex(range.start * 2); // index to t1
+        let i2 = TriangleIndex(range.start * 2 + 1); // index to t2
+
+        let t1 = TriangleLike{
+            neighbors: [i2, i2, i2],
+            points: (PointIndex(range.start), PointIndex(range.start+1), None)
+        };
+        let t2 = TriangleLike{
+            neighbors: [i1, i1, i1],
+            points: (PointIndex(range.start+1), PointIndex(range.start), None)
+        };
+
+        *self.tr_mut(i1) = t1;
+        *self.tr_mut(i2) = t2;
     }
 
     /// Construct triangulation on 3 points
@@ -125,6 +159,10 @@ impl Delaunay{
     /// hull through 'ghost' triangles
     fn build_3points(&mut self, range: Range<usize>){
         // TODO
+    }
+
+    fn tr_mut<T: TrIndex>(&mut self, id: T)->&mut TriangleLike{
+        &mut self.triangles[id.id()]
     }
 
     /// merge to partial triangulation

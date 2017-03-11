@@ -94,9 +94,48 @@ impl Delaunay{
         self.points.dedup();
     }
 
-    // TODO
+    /// Construct triangulation on selected slice of points
     fn build(&mut self, range: Range<usize>){
+        match range.len(){
+            2 => self.build_2points(range),
+            3 => self.build_3points(range),
+            _ => {
+                let middle = (range.start + range.end) / 2;
+                self.build(range.start..middle);
+                self.build(middle..range.end);
+
+                self.merge(range.start, middle, range.end);
+            }
+        }
     }
+
+    /// Construct triangulation on 2 points
+    ///
+    /// consist of one edge convex hull
+    /// through 'ghost' triangles
+    fn build_2points(&mut self, range: Range<usize>){
+        // TODO
+    }
+
+    /// Construct triangulation on 3 points
+    ///
+    /// consist of triangle and
+    /// hull through 'ghost' triangles
+    fn build_3points(&mut self, range: Range<usize>){
+        // TODO
+    }
+
+    /// merge to partial triangulation
+    ///
+    /// left triangulation consist from points in from..sep
+    /// right from points in sep..to
+    fn merge(&mut self, from: usize, sep: usize, to: usize){
+        // TODO
+    }
+
+
+
+
 }
 
 

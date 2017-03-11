@@ -61,13 +61,19 @@ struct Delaunay{
 
 impl Delaunay{
     fn new(points: Vec<Point>)->Delaunay{
-        let len = points.len();
         let mut d = Delaunay{points: points, triangles: vec![]};
         d.sort_points();
+        // since sort_points not only sorting points, but also remove duplicates
+        // len calculation should be exactly here
+        let len = d.points.len();
         d.build(0..len);
         d
     }
 
+    /// sort points in from left to right order
+    ///
+    /// if several points has similar x-coordinate, then sorting done by y-coordinate
+    /// removes duplicate points
     fn sort_points(&mut self){
         self.points.sort_by(|a, b|{
             debug_assert!(
@@ -78,22 +84,46 @@ impl Delaunay{
                 , "Delaunay do not support infinite point coordinates."
             );
             // since none coordinate is NaN unwrap is correct
-            let x_cmp = a.x.partial_cmp(b.x).unwrap();
+            let x_cmp = a.x.partial_cmp(&b.x).unwrap();
             if x_cmp == Ordering::Equal{
-                a.t.partial_cmp(b.y).unwrap()
+                a.y.partial_cmp(&b.y).unwrap()
             }else{
                 x_cmp
             }
-        })
+        });
+        self.points.dedup();
     }
 
     // TODO
     fn build(&mut self, range: Range<usize>){
-
     }
 }
 
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sort_points(){
+        let points = vec![
+            Point::new(1.0, 2.0),
+            Point::new(0.0, 2.0),
+            Point::new(3.0, 6.0),
+            Point::new(0.0, 0.0),
+            Point::new(-1.0, 2.0),
+            Point::new(0.0, 2.0),
+        ];
+        let expected = vec![
+            Point::new(-1.0, 2.0),
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 2.0),
+            Point::new(1.0, 2.0),
+            Point::new(3.0, 6.0),
+        ];
+
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.sort_points();
+        assert_eq!(d.points, expected);
+    }
 }

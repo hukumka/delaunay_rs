@@ -9,7 +9,7 @@ type Point = cgmath::Point2<f64>;
 
 
 /// Represent point id in delaunay data
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct PointIndex(usize);
 /// Represent triangle id in delaunay data
 trait TrIndex{
@@ -17,7 +17,7 @@ trait TrIndex{
 }
 
 /// Represent any triangle index (further check required)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct TriangleIndex(usize);
 impl TrIndex for TriangleIndex{
     fn id(&self)->usize{
@@ -26,7 +26,7 @@ impl TrIndex for TriangleIndex{
 }
 
 /// Represent ghost triangle index
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct EdgeIndex(usize);
 impl TrIndex for EdgeIndex{
     fn id(&self)->usize{
@@ -49,7 +49,7 @@ impl TrIndex for EdgeIndex{
 ///     neighbors[1] - next counterclockwise edge on hull
 ///     neighbors[2] - previous counterclockwise edge on hull (next clockwise)
 ///     points kept in counterclockwise order on hull
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct TriangleLike{
     neighbors: [TriangleIndex; 3],
     points: (PointIndex, PointIndex, Option<PointIndex>)
@@ -201,5 +201,45 @@ mod tests {
         let mut d = Delaunay{points: points, triangles: vec![]};
         d.sort_points();
         assert_eq!(d.points, expected);
+    }
+
+    #[test]
+    fn test_build_2point(){
+        let points = vec![
+            Point::new(0.0, 2.0),
+            Point::new(1.0, 2.0),
+            Point::new(3.0, 2.0),
+            Point::new(4.0, 2.0),
+        ];
+
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(8, TriangleLike::default());
+        d.build_2points(0..2);
+        d.build_2points(2..4);
+
+        let expected1 = [
+            TriangleLike{
+                neighbors: [TriangleIndex(1), TriangleIndex(1), TriangleIndex(1)], 
+                points: (PointIndex(0), PointIndex(1), None)
+            },
+            TriangleLike{
+                neighbors: [TriangleIndex(0), TriangleIndex(0), TriangleIndex(0)], 
+                points: (PointIndex(1), PointIndex(0), None)
+            },
+        ];
+
+        let expected2 = [
+            TriangleLike{
+                neighbors: [TriangleIndex(5), TriangleIndex(5), TriangleIndex(5)], 
+                points: (PointIndex(2), PointIndex(3), None)
+            },
+            TriangleLike{
+                neighbors: [TriangleIndex(4), TriangleIndex(4), TriangleIndex(4)], 
+                points: (PointIndex(3), PointIndex(2), None)
+            },
+        ];
+
+        assert_eq!(&d.triangles[0..2], &expected1);
+        assert_eq!(&d.triangles[4..6], &expected2);
     }
 }

@@ -6,6 +6,7 @@ extern crate cgmath;
 use cgmath::prelude::*;
 
 type Point = cgmath::Point2<f64>;
+type Vector = cgmath::Vector2<f64>;
 
 
 /// Represent point id in delaunay data
@@ -175,6 +176,16 @@ impl Delaunay{
 
 }
 
+/// check if 3 point lies on one line
+fn is_on_line(a: &Point, b: &Point, c: &Point)->bool{
+    cross_product(b-a, c-a) == 0
+}
+
+/// calculate z-component of cross product of vectors extended with z=0
+fn cross_product(a: &Vector, b: &Vector) -> f64{
+    a.x * b.y - a.y * b.x
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -241,5 +252,5 @@ mod tests {
 
         assert_eq!(&d.triangles[0..2], &expected1);
         assert_eq!(&d.triangles[4..6], &expected2);
-    }
+    
 }

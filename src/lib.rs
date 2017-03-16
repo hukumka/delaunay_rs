@@ -148,6 +148,10 @@ impl Delaunay{
     /// space for triangles must be preallocated
     /// triangles kept in range.start*2..range..(end*2-2)
     /// triangles (end*2-2)..end*2 reserved
+    /// 
+    /// TODO: leftmost and rightmost edges (edges containing leftmost point in .0 and rightmost in .1)
+    /// stored as in reserved triangle end*2-2 as neighbors[0] and neighbors[1] correspondingly
+    /// (merge)
     ///
     /// Divide and Conquer Gulbah-Stolfi algorithm
     fn build(&mut self, range: Range<usize>){
@@ -183,6 +187,11 @@ impl Delaunay{
 
         *self.tr_mut(i1) = t1;
         *self.tr_mut(i2) = t2;
+
+        // store rightmost and left most edges
+        let reversed_id = TriangleIndex(start*2 + 2); // same as end*2 - 2, since end == start+2
+        self.tr_mut(reversed_id).neighbors[0] = i1; // t1 contain leftmost point as .0
+        self.tr_mut(reversed_id).neighbors[1] = i1; // t1 contain rightmost point as .1
     }
 
     /// Construct triangulation on 3 points
@@ -212,6 +221,11 @@ impl Delaunay{
                 points: (p_ids[1], p_ids[0], None),
                 neighbors: [tr_ids[0], tr_ids[0], tr_ids[2]]
             };
+
+            // store rightmost and left most edges
+            let reversed_id = TriangleIndex(start*2 + 4); // same as end*2 - 2, since end == start+3
+            self.tr_mut(reversed_id).neighbors[0] = tr_ids[0]; // tr_ids[0] contain leftmost point as .0
+            self.tr_mut(reversed_id).neighbors[1] = tr_ids[1]; // tr_ids[1] contain rightmost point as .1
         }else{
             // real triangle and 3 ghost triangles by its edges
             
@@ -238,6 +252,15 @@ impl Delaunay{
                 points: (p_ids[0], p_ids[1], None),
                 neighbors: [tr_ids[0], tr_ids[1], tr_ids[2]]
             };
+
+            // store rightmost and left most edges
+            let reversed_id = TriangleIndex(start*2 + 4); // same as end*2 - 2, since end == start+3
+            self.tr_mut(reversed_id).neighbors[0] = tr_ids[3]; // tr_ids[3] contain leftmost point as .0
+            if self.p(p_ids[1]).x <= self.p(p_ids[2]).x{
+                self.tr_mut(reversed_id).neighbors[1] = tr_ids[1]; // tr_ids[2] contain leftmost point as .1
+            }else{
+                self.tr_mut(reversed_id).neighbors[1] = tr_ids[3]; // tr_ids[1] contain leftmost point as .1
+            }
         }
     }
 
@@ -309,14 +332,14 @@ impl Delaunay{
 
     /// find index of ghost triangle, containing rightmost point at index 0
     fn find_rightmost_edge(&self, range: Range<usize>)->EdgeIndex{
-        // TODO
-        EdgeIndex(0)
+        // see build() invariants to details
+        EdgeIndex::new(self, self.triangles[range.end*2 - 2].neighbors[1])
     }
 
     /// find index of ghost triangle, containing leftmost point at index 1
     fn find_leftmost_edge(&self, range: Range<usize>)->EdgeIndex{
-        // TODO
-        EdgeIndex(0)
+        // see build() invariants to details
+        EdgeIndex::new(self, self.triangles[range.end*2 - 2].neighbors[0])
     }
 
     /// find lower tangent between two convex polygones
@@ -582,5 +605,50 @@ mod tests {
         ];
         assert_eq!(&d.triangles[0..4], expected1);
         assert_eq!(&d.triangles[6..10], expected2);
+    }
+
+    #[test]
+    fn test_find_leftmost_rightmost_invariant(){
+        // test for build2
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(1.0, 1.0),
+            Point::new(1.0, 2.0)
+        ];
+
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(8, TriangleLike::default());
+        d.build_2points(0);
+        d.build_2points(2);
+
+        assert_eq!(d.triangles[2].neighbors[0], TriangleIndex(0));
+        assert_eq!(d.triangles[2].neighbors[1], TriangleIndex(0));
+
+        assert_eq!(d.triangles[6].neighbors[0], TriangleIndex(4));
+        assert_eq!(d.triangles[6].neighbors[1], TriangleIndex(4));
+
+        // test for build3 triangle
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 1.0),
+            Point::new(1.0, 0.0),
+
+            Point::new(1.0, 1.0),
+            Point::new(2.0, 0.0),
+            Point::new(2.0, 1.0)
+        ];
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(12, TriangleLike::default());
+        d.build_3points(0);
+        d.build_3points(3);
+
+        assert_eq!(d.triangles[4].neighbors[0], TriangleIndex(3));
+        assert_eq!(d.triangles[4].neighbors[1], TriangleIndex(3));
+
+        assert_eq!(d.triangles[10].neighbors[0], TriangleIndex(9));
+        assert_eq!(d.triangles[10].neighbors[1], TriangleIndex(7));
+
+        // TODO: test following invariant for merge once it finished
     }
 }

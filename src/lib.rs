@@ -1,5 +1,3 @@
-mod tmptest;
-
 use std::ops::Range;
 use std::cmp::Ordering;
 
@@ -31,10 +29,38 @@ impl TrIndex for TriangleIndex{
 /// Represent ghost triangle index
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct EdgeIndex(usize);
+impl EdgeIndex{
+    /// Create new EdgeIndex checking for correctness
+    ///
+    /// check appear only in debug build (no runtime cost in release)
+    /// this check does not guarantee correctness, since referenced TriangleLike could be changed after
+    /// index creation
+    fn new(d: &Delaunay, id: TriangleIndex)->EdgeIndex{
+        let edge = EdgeIndex(id.id());
+        edge.test(d);
+        edge
+    }
+
+    /// Check if EdgeIndex represent correct ghost triangle
+    /// if not panic
+    /// simply ommited in release
+    #[inline]
+    fn test(&self, d: &Delaunay){
+        debug_assert!(d.tr(*self).points.2.is_none());
+    }
+}
+
 impl TrIndex for EdgeIndex{
     #[inline]
     fn id(&self)->usize{
         self.0
+    }
+}
+
+/// every EdgeIndex could be used as TriangleIndex
+impl Into<TriangleIndex> for EdgeIndex{
+    fn into(self)->TriangleIndex{
+        TriangleIndex(self.id())
     }
 }
 
@@ -245,9 +271,93 @@ impl Delaunay{
     /// left triangulation consist from points in from..sep
     /// right from points in sep..to
     fn merge(&mut self, from: usize, sep: usize, to: usize){
-        // TODO
+        let left = self.find_rightmost_edge(from..sep);
+        let right = self.find_leftmost_edge(sep..to);
+
+        let (left, right) = self.find_lower_tangent(left, right);
+
+        // use reserved space for lower tangent and upper tangent edges
+        let lower_tangent_id = TriangleIndex(sep*2);
+        let upper_tangent_id = TriangleIndex(sep*2 + 1); // for time of merge will be for moving edge there new triangles will appear
+
+        let lower_tangent = TriangleLike{
+            points: (self.tr(left).points.0, self.tr(right).points.1, None),
+            neighbors: [upper_tangent_id, self.edge_clockwise(right).into(), self.edge_counterclockwise(left).into()]
+        };
+
+        let mut merge_edge = TriangleLike{
+            points: (self.tr(right).points.1, self.tr(left).points.0, None),
+            neighbors: [lower_tangent_id, left.into(), right.into()]
+        };
+
+        loop{
+            while self.try_merge_right(&mut merge_edge){}
+
+            let mut done = true;
+            while self.try_merge_left(&mut merge_edge){
+                done = false;
+            }
+
+            if done{
+                break;
+            }
+        }
+
+        *self.tr_mut(lower_tangent_id) = lower_tangent;
+        *self.tr_mut(upper_tangent_id) = merge_edge; // since we added all we could merge_edge became upper_tangent
     }
 
+    /// find index of ghost triangle, containing rightmost point at index 0
+    fn find_rightmost_edge(&self, range: Range<usize>)->EdgeIndex{
+        // TODO
+        EdgeIndex(0)
+    }
+
+    /// find index of ghost triangle, containing leftmost point at index 1
+    fn find_leftmost_edge(&self, range: Range<usize>)->EdgeIndex{
+        // TODO
+        EdgeIndex(0)
+    }
+
+    /// find lower tangent between two convex polygones
+    ///
+    /// left and right - 'ghost' triangles, containting points with clear line sight
+    /// between them. left containt this point at .0, right at .1
+    ///
+    /// result is left and right 'ghost' triangles, containing left point in .0 and right in .1 correspondingly.
+    fn find_lower_tangent(&self, left: EdgeIndex, right: EdgeIndex)->(EdgeIndex, EdgeIndex){
+        // TODO
+        // TODO DO DO
+        (EdgeIndex(0), EdgeIndex(0))
+    }
+
+    /// find next counterclockwise ghost triangle on hull
+    fn edge_counterclockwise(&self, id: EdgeIndex)->EdgeIndex{
+        EdgeIndex::new(self, self.tr(id).neighbors[1])
+    }
+
+    /// find next clockwise ghost triangle on hull
+    fn edge_clockwise(&self, id: EdgeIndex)->EdgeIndex{
+        EdgeIndex::new(self, self.tr(id).neighbors[1])
+    }
+
+    /// Trying to merge on given edge with some point from right triangulation
+    ///
+    /// if merge appear return true, otherwise false
+    /// if merge appear will move change merge_edge, to be upper edge of created triangle
+    fn try_merge_right(&mut self, merge_edge: &mut TriangleLike)->bool{
+        // TODO
+        false
+    }
+
+    /// Trying to merge on given edge with some point from left triangulation
+    ///
+    /// if merge appear return true, otherwise false
+    /// if merge appear will move change merge_edge, to be upper edge of created triangle
+    fn try_merge_left(&mut self, merge_edge: &mut TriangleLike)->bool{
+        // TODO
+        false
+    }
 }
 
 /// check if 3 point lies on one line

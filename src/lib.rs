@@ -1,9 +1,10 @@
+mod tmptest;
+
 use std::ops::Range;
 use std::cmp::Ordering;
 
 
 extern crate cgmath;
-use cgmath::prelude::*;
 
 type Point = cgmath::Point2<f64>;
 type Vector = cgmath::Vector2<f64>;
@@ -21,6 +22,7 @@ trait TrIndex{
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct TriangleIndex(usize);
 impl TrIndex for TriangleIndex{
+    #[inline]
     fn id(&self)->usize{
         self.0
     }
@@ -30,6 +32,7 @@ impl TrIndex for TriangleIndex{
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct EdgeIndex(usize);
 impl TrIndex for EdgeIndex{
+    #[inline]
     fn id(&self)->usize{
         self.0
     }
@@ -41,7 +44,7 @@ impl TrIndex for EdgeIndex{
 /// Contain 2 cases:
 /// Regular triangle
 ///     points.3 is Some(PointIndex)
-///     points kept from leftmost in counterclockwise order
+///     points kept in counterclockwise order (any points could be first)
 ///     neighbors[i] - triangle having same edge as opposite to points[i]
 /// Ghost triangle
 ///     points.3 is None
@@ -77,11 +80,13 @@ pub struct Delaunay{
 impl Delaunay{
     /// Construct Delaunay triangulation from given set of points
     pub fn new(points: Vec<Point>)->Delaunay{
-        let mut d = Delaunay{points: points, triangles: vec![]};
-        d.sort_points();
-        // since sort_points not only sorting points, but also remove duplicates
-        // len calculation should be exactly here
-        let len = d.points.len();
+        let mut points = points;
+        Delaunay::sort_points(&mut points);
+        let len = points.len();
+        let mut d = Delaunay{
+            points: points, 
+            triangles: Vec::with_capacity(len*2)
+        };
         d.triangles.resize(len*2, TriangleLike::default());
         d.build(0..len);
         d
@@ -92,14 +97,14 @@ impl Delaunay{
     ///
     /// if several points has similar x-coordinate, then sorting done by y-coordinate
     /// removes duplicate points
-    fn sort_points(&mut self){
-        self.points.sort_by(|a, b|{
+    fn sort_points(points: &mut Vec<Point>){
+        points.sort_by(|a, b|{
             debug_assert!(
                 a.x.is_finite()
                 && a.y.is_finite()
                 && b.x.is_finite()
                 && b.y.is_finite()
-                , "Delaunay do not support infinite point coordinates."
+                , "Delaunay do not support infinite and NaN point coordinates."
             );
             // since none coordinate is NaN unwrap is correct
             let x_cmp = a.x.partial_cmp(&b.x).unwrap();
@@ -109,7 +114,7 @@ impl Delaunay{
                 x_cmp
             }
         });
-        self.points.dedup();
+        points.dedup();
     }
 
     /// Construct triangulation on selected slice of points
@@ -117,10 +122,12 @@ impl Delaunay{
     /// space for triangles must be preallocated
     /// triangles kept in range.start*2..range..(end*2-2)
     /// triangles (end*2-2)..end*2 reserved
+    ///
+    /// Divide and Conquer Gulbah-Stolfi algorithm
     fn build(&mut self, range: Range<usize>){
         match range.len(){
-            2 => self.build_2points(range),
-            3 => self.build_3points(range),
+            2 => self.build_2points(range.start),
+            3 => self.build_3points(range.start),
             _ => {
                 let middle = (range.start + range.end) / 2;
                 self.build(range.start..middle);
@@ -135,19 +142,17 @@ impl Delaunay{
     ///
     /// consist of one edge convex hull
     /// through 'ghost' triangles
-    fn build_2points(&mut self, range: Range<usize>){
-        debug_assert!(range.len() == 2);
-
-        let i1 = TriangleIndex(range.start * 2); // index to t1
-        let i2 = TriangleIndex(range.start * 2 + 1); // index to t2
+    fn build_2points(&mut self, start: usize){
+        let i1 = TriangleIndex(start * 2); // index to t1
+        let i2 = TriangleIndex(start * 2 + 1); // index to t2
 
         let t1 = TriangleLike{
             neighbors: [i2, i2, i2],
-            points: (PointIndex(range.start), PointIndex(range.start+1), None)
+            points: (PointIndex(start), PointIndex(start+1), None)
         };
         let t2 = TriangleLike{
             neighbors: [i1, i1, i1],
-            points: (PointIndex(range.start+1), PointIndex(range.start), None)
+            points: (PointIndex(start+1), PointIndex(start), None)
         };
 
         *self.tr_mut(i1) = t1;
@@ -158,12 +163,81 @@ impl Delaunay{
     ///
     /// consist of triangle and
     /// hull through 'ghost' triangles
-    fn build_3points(&mut self, range: Range<usize>){
-        // TODO
+    ///     or
+    /// of hull through 'ghost' triangles
+    fn build_3points(&mut self, start: usize){
+        let p_ids = [PointIndex(start), PointIndex(start+1), PointIndex(start+2)];
+        let tr_ids = [TriangleIndex(start*2), TriangleIndex(start*2 + 1), TriangleIndex(start*2 + 2), TriangleIndex(start*2 + 3)];
+        if self.is_on_line_index(&p_ids){
+            // 4 ghost triangles by 2 edges
+            *self.tr_mut(tr_ids[0]) = TriangleLike{
+                points: (p_ids[0], p_ids[1], None),
+                neighbors: [tr_ids[3], tr_ids[1], tr_ids[3]]
+            };
+            *self.tr_mut(tr_ids[1]) = TriangleLike{
+                points: (p_ids[1], p_ids[2], None),
+                neighbors: [tr_ids[2], tr_ids[2], tr_ids[0]]
+            };
+            *self.tr_mut(tr_ids[2]) = TriangleLike{
+                points: (p_ids[2], p_ids[1], None),
+                neighbors: [tr_ids[1], tr_ids[3], tr_ids[1]]
+            };
+            *self.tr_mut(tr_ids[3]) = TriangleLike{
+                points: (p_ids[1], p_ids[0], None),
+                neighbors: [tr_ids[0], tr_ids[0], tr_ids[2]]
+            };
+        }else{
+            // real triangle and 3 ghost triangles by its edges
+            
+            // make points appear in counterclockwise order
+            let p_ids = if self.is_counterclockwise_index(&p_ids){
+                p_ids
+            }else{
+                [p_ids[0], p_ids[2], p_ids[1]]
+            };
+
+            *self.tr_mut(tr_ids[0]) = TriangleLike{
+                points: (p_ids[0], p_ids[1], Some(p_ids[2])),
+                neighbors: [tr_ids[1], tr_ids[2], tr_ids[3]]
+            };
+            *self.tr_mut(tr_ids[1]) = TriangleLike{
+                points: (p_ids[1], p_ids[2], None),
+                neighbors: [tr_ids[0], tr_ids[2], tr_ids[3]]
+            };
+            *self.tr_mut(tr_ids[2]) = TriangleLike{
+                points: (p_ids[2], p_ids[0], None),
+                neighbors: [tr_ids[0], tr_ids[3], tr_ids[1]]
+            };
+            *self.tr_mut(tr_ids[3]) = TriangleLike{
+                points: (p_ids[0], p_ids[1], None),
+                neighbors: [tr_ids[0], tr_ids[1], tr_ids[2]]
+            };
+        }
     }
 
+    /// Check if points at given indexes lies on line
+    fn is_on_line_index(&mut self, ids: &[PointIndex; 3])->bool{
+        is_on_line(self.p(ids[0]), self.p(ids[1]), self.p(ids[2]))
+    }
+
+    /// Check if points at given indexes lies in counterclockwise order
+    fn is_counterclockwise_index(&mut self, ids: &[PointIndex; 3])->bool{
+        is_counterclockwise(self.p(ids[0]), self.p(ids[1]), self.p(ids[2]))
+    }
+
+    /// Get mutable reference on triangle by index
     fn tr_mut<T: TrIndex>(&mut self, id: T)->&mut TriangleLike{
         &mut self.triangles[id.id()]
+    }
+
+    /// Get immutable reference on triangle by index
+    fn tr<T: TrIndex>(&self, id: T)->&TriangleLike{
+        &self.triangles[id.id()]
+    }
+
+    /// Get immutable reference on Point by index
+    fn p(&self, id: PointIndex)->&Point{
+        &self.points[id.0]
     }
 
     /// merge to partial triangulation
@@ -178,7 +252,12 @@ impl Delaunay{
 
 /// check if 3 point lies on one line
 fn is_on_line(a: &Point, b: &Point, c: &Point)->bool{
-    cross_product(b-a, c-a) == 0
+    cross_product(&(b-a), &(c-a)) == 0.0
+}
+
+/// check if 3 points counterclockwise
+fn is_counterclockwise(a: &Point, b: &Point, c: &Point)->bool{
+    cross_product(&(b-a), &(c-a)) > 0.0
 }
 
 /// calculate z-component of cross product of vectors extended with z=0
@@ -193,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_sort_points(){
-        let points = vec![
+        let mut points = vec![
             Point::new(1.0, 2.0),
             Point::new(0.0, 2.0),
             Point::new(3.0, 6.0),
@@ -209,9 +288,8 @@ mod tests {
             Point::new(3.0, 6.0),
         ];
 
-        let mut d = Delaunay{points: points, triangles: vec![]};
-        d.sort_points();
-        assert_eq!(d.points, expected);
+        Delaunay::sort_points(&mut points);
+        assert_eq!(points, expected);
     }
 
     #[test]
@@ -225,8 +303,8 @@ mod tests {
 
         let mut d = Delaunay{points: points, triangles: vec![]};
         d.triangles.resize(8, TriangleLike::default());
-        d.build_2points(0..2);
-        d.build_2points(2..4);
+        d.build_2points(0);
+        d.build_2points(2);
 
         let expected1 = [
             TriangleLike{
@@ -252,5 +330,147 @@ mod tests {
 
         assert_eq!(&d.triangles[0..2], &expected1);
         assert_eq!(&d.triangles[4..6], &expected2);
+    }
     
+    #[test]
+    fn test_is_on_line(){
+        let p1 = Point::new(1.0, 1.0);
+        let p2 = Point::new(2.0, 3.0);
+        let p3 = Point::new(3.0, 5.0);
+        assert!(is_on_line(&p1, &p2, &p3));
+        let p1 = Point::new(1.0, 1.0);
+        let p2 = Point::new(2.0, 3.0);
+        let p3 = Point::new(3.0, 3.0);
+        assert!(!is_on_line(&p1, &p2, &p3));
+    }
+
+    #[test]
+    fn test_is_counterclockwise(){
+        let p1 = Point::new(0.0, 0.0);
+        let p2 = Point::new(1.0, 0.0);
+        let p3 = Point::new(0.0, 1.0);
+        assert!(is_counterclockwise(&p1, &p2, &p3));
+        let p1 = Point::new(0.0, 0.0);
+        let p2 = Point::new(0.0, 1.0);
+        let p3 = Point::new(1.0, 0.0);
+        assert!(!is_counterclockwise(&p1, &p2, &p3));
+    }
+
+    #[test]
+    fn test_build_3points(){
+        // triangles test
+        let points = vec![
+            // start in clockwise
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 1.0),
+            Point::new(1.0, 0.0),
+
+            // start in counterclockwise
+            Point::new(1.0, 1.0),
+            Point::new(2.0, 0.0),
+            Point::new(3.0, 1.0)
+        ];
+
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(12, TriangleLike::default());
+        d.build_3points(0);
+        d.build_3points(3);
+
+        let expected1 = &[
+            TriangleLike{
+                points: (PointIndex(0), PointIndex(2), Some(PointIndex(1))),
+                neighbors: [TriangleIndex(1), TriangleIndex(2), TriangleIndex(3)]
+            },
+            TriangleLike{
+                points: (PointIndex(2), PointIndex(1), None),
+                neighbors: [TriangleIndex(0), TriangleIndex(2), TriangleIndex(3)]
+            },
+            TriangleLike{
+                points: (PointIndex(1), PointIndex(0), None),
+                neighbors: [TriangleIndex(0), TriangleIndex(3), TriangleIndex(1)]
+            },
+            TriangleLike{
+                points: (PointIndex(0), PointIndex(2), None),
+                neighbors: [TriangleIndex(0), TriangleIndex(1), TriangleIndex(2)]
+            }
+        ];
+
+        let expected2 = &[
+            TriangleLike{
+                points: (PointIndex(3), PointIndex(4), Some(PointIndex(5))),
+                neighbors: [TriangleIndex(7), TriangleIndex(8), TriangleIndex(9)]
+            },
+            TriangleLike{
+                points: (PointIndex(4), PointIndex(5), None),
+                neighbors: [TriangleIndex(6), TriangleIndex(8), TriangleIndex(9)]
+            },
+            TriangleLike{
+                points: (PointIndex(5), PointIndex(3), None),
+                neighbors: [TriangleIndex(6), TriangleIndex(9), TriangleIndex(7)]
+            },
+            TriangleLike{
+                points: (PointIndex(3), PointIndex(4), None),
+                neighbors: [TriangleIndex(6), TriangleIndex(7), TriangleIndex(8)]
+            },
+        ];
+
+        assert_eq!(&d.triangles[0..4], expected1);
+        assert_eq!(&d.triangles[6..10], expected2);
+
+        // test 3 points on line
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 2.0),
+            Point::new(3.0, 6.0),
+
+            Point::new(4.0, 0.0),
+            Point::new(5.0, -1.0),
+            Point::new(6.0, -2.0),
+        ];
+
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(12, TriangleLike::default());
+        d.build_3points(0);
+        d.build_3points(3);
+
+        let expected1 = &[
+            TriangleLike{
+                points: (PointIndex(0), PointIndex(1), None),
+                neighbors: [TriangleIndex(3), TriangleIndex(1), TriangleIndex(3)]
+            },
+            TriangleLike{
+                points: (PointIndex(1), PointIndex(2), None),
+                neighbors: [TriangleIndex(2), TriangleIndex(2), TriangleIndex(0)]
+            },
+            TriangleLike{
+                points: (PointIndex(2), PointIndex(1), None),
+                neighbors: [TriangleIndex(1), TriangleIndex(3), TriangleIndex(1)]
+            },
+            TriangleLike{
+                points: (PointIndex(1), PointIndex(0), None),
+                neighbors: [TriangleIndex(0), TriangleIndex(0), TriangleIndex(2)]
+            }
+        ];
+
+        let expected2 = &[
+            TriangleLike{
+                points: (PointIndex(3), PointIndex(4), None),
+                neighbors: [TriangleIndex(9), TriangleIndex(7), TriangleIndex(9)]
+            },
+            TriangleLike{
+                points: (PointIndex(4), PointIndex(5), None),
+                neighbors: [TriangleIndex(8), TriangleIndex(8), TriangleIndex(6)]
+            },
+            TriangleLike{
+                points: (PointIndex(5), PointIndex(4), None),
+                neighbors: [TriangleIndex(7), TriangleIndex(9), TriangleIndex(7)]
+            },
+            TriangleLike{
+                points: (PointIndex(4), PointIndex(3), None),
+                neighbors: [TriangleIndex(6), TriangleIndex(6), TriangleIndex(8)]
+            }
+        ];
+        assert_eq!(&d.triangles[0..4], expected1);
+        assert_eq!(&d.triangles[6..10], expected2);
+    }
 }

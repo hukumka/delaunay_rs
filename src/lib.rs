@@ -203,7 +203,7 @@ impl Delaunay{
     fn build_3points(&mut self, start: usize){
         let p_ids = [PointIndex(start), PointIndex(start+1), PointIndex(start+2)];
         let tr_ids = [TriangleIndex(start*2), TriangleIndex(start*2 + 1), TriangleIndex(start*2 + 2), TriangleIndex(start*2 + 3)];
-        if self.is_on_line_index(&p_ids){
+        if self.is_on_line_index(p_ids[0], p_ids[1], p_ids[2]){
             // 4 ghost triangles by 2 edges
             *self.tr_mut(tr_ids[0]) = TriangleLike{
                 points: (p_ids[0], p_ids[1], None),
@@ -230,7 +230,7 @@ impl Delaunay{
             // real triangle and 3 ghost triangles by its edges
             
             // make points appear in counterclockwise order
-            let p_ids = if self.is_counterclockwise_index(&p_ids){
+            let p_ids = if self.is_counterclockwise_index(p_ids[0], p_ids[1], p_ids[2]){
                 p_ids
             }else{
                 [p_ids[0], p_ids[2], p_ids[1]]
@@ -265,13 +265,18 @@ impl Delaunay{
     }
 
     /// Check if points at given indexes lies on line
-    fn is_on_line_index(&mut self, ids: &[PointIndex; 3])->bool{
-        is_on_line(self.p(ids[0]), self.p(ids[1]), self.p(ids[2]))
+    fn is_on_line_index(&self, a: PointIndex, b: PointIndex, c: PointIndex)->bool{
+        is_on_line(self.p(a), self.p(b), self.p(c))
     }
 
     /// Check if points at given indexes lies in counterclockwise order
-    fn is_counterclockwise_index(&mut self, ids: &[PointIndex; 3])->bool{
-        is_counterclockwise(self.p(ids[0]), self.p(ids[1]), self.p(ids[2]))
+    fn is_counterclockwise_index(&self, a: PointIndex, b: PointIndex, c: PointIndex)->bool{
+        is_counterclockwise(self.p(a), self.p(b), self.p(c))
+    }
+
+    /// Check if points at given indexes lies in counterclockwise order
+    fn is_clockwise_index(&self, a: PointIndex, b: PointIndex, c: PointIndex)->bool{
+        is_clockwise(self.p(a), self.p(b), self.p(c))
     }
 
     /// Get mutable reference on triangle by index
@@ -349,9 +354,22 @@ impl Delaunay{
     ///
     /// result is left and right 'ghost' triangles, containing left point in .0 and right in .1 correspondingly.
     fn find_lower_tangent(&self, left: EdgeIndex, right: EdgeIndex)->(EdgeIndex, EdgeIndex){
-        // TODO
-        // TODO DO DO
-        (EdgeIndex(0), EdgeIndex(0))
+        let mut left = left;
+        let mut right = self.edge_clockwise(right);
+        loop{
+            while self.is_clockwise_index(self.tr(left).points.0, self.tr(left).points.1, self.tr(right).points.0){
+                left = self.edge_clockwise(left);
+            }
+            let mut done = true;
+            while self.is_clockwise_index(self.tr(left).points.1, self.tr(right).points.0, self.tr(right).points.1){
+                right = self.edge_counterclockwise(right);
+                done = false;
+            }
+            if done{
+                break;
+            }
+        }
+        (self.edge_counterclockwise(left), self.edge_clockwise(right))
     }
 
     /// find next counterclockwise ghost triangle on hull
@@ -361,7 +379,7 @@ impl Delaunay{
 
     /// find next clockwise ghost triangle on hull
     fn edge_clockwise(&self, id: EdgeIndex)->EdgeIndex{
-        EdgeIndex::new(self, self.tr(id).neighbors[1])
+        EdgeIndex::new(self, self.tr(id).neighbors[2])
     }
 
     /// Trying to merge on given edge with some point from right triangulation
@@ -391,6 +409,11 @@ fn is_on_line(a: &Point, b: &Point, c: &Point)->bool{
 /// check if 3 points counterclockwise
 fn is_counterclockwise(a: &Point, b: &Point, c: &Point)->bool{
     cross_product(&(b-a), &(c-a)) > 0.0
+}
+
+/// check if 3 points clockwise
+fn is_clockwise(a: &Point, b: &Point, c: &Point)->bool{
+    cross_product(&(b-a), &(c-a)) < 0.0
 }
 
 /// calculate z-component of cross product of vectors extended with z=0
@@ -649,6 +672,52 @@ mod tests {
         assert_eq!(d.triangles[10].neighbors[0], TriangleIndex(9));
         assert_eq!(d.triangles[10].neighbors[1], TriangleIndex(7));
 
+        // test for build3 line
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(2.0, 0.0),
+
+            Point::new(3.0, -1.0),
+            Point::new(3.0, 0.0),
+            Point::new(3.0, 1.0)
+        ];
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(12, TriangleLike::default());
+        d.build_3points(0);
+        d.build_3points(3);
+
+        assert_eq!(d.triangles[4].neighbors[0], TriangleIndex(0));
+        assert_eq!(d.triangles[4].neighbors[1], TriangleIndex(1));
+
+        assert_eq!(d.triangles[10].neighbors[0], TriangleIndex(6));
+        assert_eq!(d.triangles[10].neighbors[1], TriangleIndex(7));
+
+
         // TODO: test following invariant for merge once it finished
+    }
+
+    #[test]
+    fn test_find_lower_tangetn(){
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(2.0, 0.0),
+
+            Point::new(3.0, -1.0),
+            Point::new(3.0, 0.0),
+            Point::new(3.0, 1.0)
+        ];
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(12, TriangleLike::default());
+        d.build_3points(0);
+        d.build_3points(3);
+
+        let l = d.find_rightmost_edge(0..3);
+        let r = d.find_leftmost_edge(3..6);
+        
+        let (l, r) = d.find_lower_tangent(l, r);
+        assert_eq!(l, EdgeIndex(0));
+        assert_eq!(r, EdgeIndex(9));
     }
 }

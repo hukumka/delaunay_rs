@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 
 
 extern crate cgmath;
+use cgmath::prelude::*;
 
 type Point = cgmath::Point2<f64>;
 type Vector = cgmath::Vector2<f64>;
@@ -305,24 +306,26 @@ impl Delaunay{
         let (left, right) = self.find_lower_tangent(left, right);
 
         // use reserved space for lower tangent and upper tangent edges
-        let lower_tangent_id = TriangleIndex(sep*2);
-        let upper_tangent_id = TriangleIndex(sep*2 + 1); // for time of merge will be for moving edge there new triangles will appear
+        let lower_tangent_id = EdgeIndex(sep*2);
+        let merge_edge_id = EdgeIndex(sep*2 + 1); // for time of merge will be for moving edge there new triangles will appear
 
         let lower_tangent = TriangleLike{
             points: (self.tr(left).points.0, self.tr(right).points.1, None),
-            neighbors: [upper_tangent_id, self.edge_clockwise(right).into(), self.edge_counterclockwise(left).into()]
+            neighbors: [merge_edge_id.into(), self.edge_clockwise(right).into(), self.edge_counterclockwise(left).into()]
         };
 
-        let mut merge_edge = TriangleLike{
+        let merge_edge = TriangleLike{
             points: (self.tr(right).points.1, self.tr(left).points.0, None),
-            neighbors: [lower_tangent_id, left.into(), right.into()]
+            neighbors: [lower_tangent_id.into(), left.into(), right.into()]
         };
+        *self.tr_mut(lower_tangent_id) = lower_tangent;
+        *self.tr_mut(merge_edge_id) = merge_edge; // once we merged all we could, merge_edge will became upper_tangent
 
         loop{
-            while self.try_merge_right(&mut merge_edge){}
+            while self.try_merge_right(merge_edge_id){}
 
             let mut done = true;
-            while self.try_merge_left(&mut merge_edge){
+            while self.try_merge_left(merge_edge_id){
                 done = false;
             }
 
@@ -331,8 +334,6 @@ impl Delaunay{
             }
         }
 
-        *self.tr_mut(lower_tangent_id) = lower_tangent;
-        *self.tr_mut(upper_tangent_id) = merge_edge; // since we added all we could merge_edge became upper_tangent
     }
 
     /// find index of ghost triangle, containing rightmost point at index 0
@@ -386,16 +387,77 @@ impl Delaunay{
     ///
     /// if merge appear return true, otherwise false
     /// if merge appear will move change merge_edge, to be upper edge of created triangle
-    fn try_merge_right(&mut self, merge_edge: &mut TriangleLike)->bool{
+    fn try_merge_right(&mut self, merge_edge_id: EdgeIndex)->bool{
+        let l = self.edge_counterclockwise(merge_edge_id);
+        let r = self.edge_clockwise(merge_edge_id);
+
+        if self.circumcircle_contain((self.tr(l).points.0, self.tr(r).points.1, self.tr(r).points.0), self.tr(l).points.1){
+            // if circle around triangle with given edge and next point from right side contains
+            // next point from left side
+            // we cannot add new edge to right
+            false
+        }else if self.is_clockwise_index(self.tr(l).points.0, self.tr(r).points.1, self.tr(r).points.0){
+            println!("not counterclockwise {:?} {:?} {:?}", self.tr(l).points.0, self.tr(r).points.1, self.tr(r).points.0);
+            false
+        }else{
+            while self.circumcircle_contain_next_candidate(r, self.tr(l).points.0){
+                self.remove_edge_r(r);
+            }
+            self.tr_mut(merge_edge_id).neighbors[2] = self.edge_clockwise(r).into();
+
+            self.tr_mut(merge_edge_id).points.0 = self.tr(r).points.0;
+
+            self.tr_mut(r).points = (
+                self.tr(r).points.1,
+                self.tr(r).points.0,
+                Some(self.tr(l).points.0)
+            );
+            self.tr_mut(r).neighbors[2] = self.tr(r).neighbors[0];
+
+            let prev = self.tr(merge_edge_id).neighbors[0];
+            self.tr_mut(r).neighbors[1] = prev;
+            self.tr_mut(prev).neighbors[0] = r.into();
+            
+            self.tr_mut(r).neighbors[0] = merge_edge_id.into();
+            self.tr_mut(merge_edge_id).neighbors[0] = r.into();
+            true
+        }
+    }
+
+    fn circumcircle_contain_next_candidate(&self, edge: EdgeIndex, third_point: PointIndex)->bool{
+        if self.tr(self.tr(edge).neighbors[0]).points.2.is_none(){
+            debug_assert!(self.tr(edge).neighbors[0].id() == edge.id());
+            false
+        }else{
+            let n = self.tr(edge).neighbors[0];
+            let n = self.tr(n);
+            let next_candidat_pid = if n.neighbors[0].id() == edge.id(){
+                n.points.0
+            }else if n.neighbors[1].id() == edge.id(){
+                n.points.1
+            }else{
+                debug_assert!(n.neighbors[2].id() == edge.id());
+                n.points.2.unwrap() // safe, since was checked above
+            };
+
+            self.circumcircle_contain((self.tr(edge).points.0, self.tr(edge).points.1, third_point), next_candidat_pid)
+        }
+    }
+
+    fn remove_edge_r(&mut self, edge: EdgeIndex){
         // TODO
-        false
+        panic!("remove_edge_r: not implemented yet");
+    }
+
+    fn circumcircle_contain(&self, (a, b, c): (PointIndex, PointIndex, PointIndex), d: PointIndex)->bool{
+        circumcircle_contain((self.p(a), self.p(b), self.p(c)), self.p(d))
     }
 
     /// Trying to merge on given edge with some point from left triangulation
     ///
     /// if merge appear return true, otherwise false
     /// if merge appear will move change merge_edge, to be upper edge of created triangle
-    fn try_merge_left(&mut self, merge_edge: &mut TriangleLike)->bool{
+    fn try_merge_left(&mut self, merge_edge: EdgeIndex)->bool{
         // TODO
         false
     }
@@ -419,6 +481,21 @@ fn is_clockwise(a: &Point, b: &Point, c: &Point)->bool{
 /// calculate z-component of cross product of vectors extended with z=0
 fn cross_product(a: &Vector, b: &Vector) -> f64{
     a.x * b.y - a.y * b.x
+}
+
+fn circumcircle_contain((a, b, c): (&Point, &Point, &Point), d: &Point)->bool{
+    let mat = cgmath::Matrix3::<f64>::new(
+        a.x - d.x, a.y - d.y, a.x.powi(2) - d.x.powi(2) + a.y.powi(2) - d.y.powi(2),
+        b.x - d.x, b.y - d.y, b.x.powi(2) - d.x.powi(2) + b.y.powi(2) - d.y.powi(2),
+        c.x - d.x, c.y - d.y, c.x.powi(2) - d.x.powi(2) + c.y.powi(2) - d.y.powi(2)
+    );
+    let det = mat.determinant();
+
+    if is_counterclockwise(a, b, c){
+        det > 0.0
+    }else{
+        det < 0.0
+    }
 }
 
 
@@ -719,5 +796,87 @@ mod tests {
         let (l, r) = d.find_lower_tangent(l, r);
         assert_eq!(l, EdgeIndex(0));
         assert_eq!(r, EdgeIndex(9));
+    }
+
+
+    #[test]
+    fn test_circumcircle_contains(){
+        let p1 = Point::new(2.0, 0.0);
+        let p2 = Point::new(-2.0, 0.0);
+        let p3 = Point::new(0.0, 4.0);
+
+        let tp0 = Point::new(0.0, 0.0);
+        assert!(circumcircle_contain((&p1, &p2, &p3), &tp0));
+        let tp1 = Point::new(0.0, -0.999999);
+        assert!(circumcircle_contain((&p1, &p2, &p3), &tp1));
+        let tp2 = Point::new(0.0, -1.0);
+        assert!(!circumcircle_contain((&p1, &p2, &p3), &tp2));
+        let tp3 = Point::new(1.0, -1.0);
+        assert!(!circumcircle_contain((&p1, &p2, &p3), &tp3));
+    }
+
+    #[test]
+    fn test_circumcircle_contains_next_candidate(){
+        let points = vec![
+            Point::new(2.0, 2.0),
+            Point::new(2.0, 3.0),
+            Point::new(3.0, 3.0),
+
+            Point::new(4.0, -2.0),
+            Point::new(4.0, 4.0),
+            Point::new(6.0, 1.0)
+        ];
+
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(12, TriangleLike::default());
+        d.build_3points(0);
+        d.build_3points(3);
+
+        assert!(d.circumcircle_contain_next_candidate(EdgeIndex(8), PointIndex(0)));
+        assert!(!d.circumcircle_contain_next_candidate(EdgeIndex(3), PointIndex(3)));
+    }
+
+    #[test]
+    fn test_try_merge_right(){
+        // merge succ without deletion
+        let points = vec![
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(1.0, 1.0),
+
+            Point::new(2.0, 0.0),
+            Point::new(2.0, 1.0),
+            Point::new(3.0, 1.0)
+        ];
+
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(12, TriangleLike::default());
+        d.build_3points(0);
+        d.build_3points(3);
+
+        *d.tr_mut(TriangleIndex(4)) = TriangleLike{
+            points: (PointIndex(1), PointIndex(3), None),
+            neighbors: [TriangleIndex(5), TriangleIndex(9), TriangleIndex(3)]
+        };
+        *d.tr_mut(TriangleIndex(5)) = TriangleLike{
+            points: (PointIndex(3), PointIndex(1), None),
+            neighbors: [TriangleIndex(4), TriangleIndex(1), TriangleIndex(8)]
+        };
+
+        let merge_edge_id = EdgeIndex::new(&d, TriangleIndex(5));
+        assert!(d.try_merge_right(merge_edge_id));
+        {
+            let lower_tangent = d.tr(TriangleIndex(4));
+            assert_eq!(lower_tangent.neighbors, [TriangleIndex(8), TriangleIndex(9), TriangleIndex(3)]);
+         
+            let merge_edge = d.tr(merge_edge_id);
+            assert_eq!(merge_edge.neighbors, [TriangleIndex(8), TriangleIndex(1), TriangleIndex(7)]);
+            assert_eq!(merge_edge.points, (PointIndex(4), PointIndex(1), None));
+         
+            let new_triangle = d.tr(TriangleIndex(8));
+            assert_eq!(new_triangle.neighbors, [TriangleIndex(5), TriangleIndex(4), TriangleIndex(6)]);
+            assert_eq!(new_triangle.points, (PointIndex(3), PointIndex(4), Some(PointIndex(1))));
+        }
+        assert!(!d.try_merge_right(merge_edge_id));
     }
 }

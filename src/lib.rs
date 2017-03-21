@@ -47,7 +47,6 @@ impl EdgeIndex{
     /// simply ommited in release
     #[inline]
     fn test(&self, d: &Delaunay){
-        println!("{:?}", self);
         debug_assert!(d.tr(*self).points.2.is_none());
     }
 }
@@ -304,23 +303,32 @@ impl Delaunay{
         let left = self.find_rightmost_edge(from..sep);
         let right = self.find_leftmost_edge(sep..to);
 
+        // save new leftmost edge
+        self.triangles[to*2 - 2].neighbors[0] = left.into();
+
         let (left, right) = self.find_lower_tangent(left, right);
 
         // use reserved space for lower tangent and upper tangent edges
-        let lower_tangent_id = EdgeIndex(sep*2);
-        let merge_edge_id = EdgeIndex(sep*2 + 1); // for time of merge will be for moving edge there new triangles will appear
+        let lower_tangent_id = EdgeIndex(sep*2 - 2);
+        let merge_edge_id = EdgeIndex(sep*2 - 1); // for time of merge will be for moving edge there new triangles will appear
 
         let lower_tangent = TriangleLike{
             points: (self.tr(left).points.0, self.tr(right).points.1, None),
-            neighbors: [merge_edge_id.into(), self.edge_clockwise(right).into(), self.edge_counterclockwise(left).into()]
+            neighbors: [merge_edge_id.into(), self.edge_counterclockwise(right).into(), self.edge_clockwise(left).into()]
         };
 
         let merge_edge = TriangleLike{
             points: (self.tr(right).points.1, self.tr(left).points.0, None),
             neighbors: [lower_tangent_id.into(), left.into(), right.into()]
         };
+
         *self.tr_mut(lower_tangent_id) = lower_tangent;
         *self.tr_mut(merge_edge_id) = merge_edge; // once we merged all we could, merge_edge will became upper_tangent
+
+        let lower_prev_nei = self.edge_clockwise(left);
+        let lower_next_nei = self.edge_counterclockwise(right);
+        self.tr_mut(lower_prev_nei).neighbors[1] = lower_tangent_id.into();
+        self.tr_mut(lower_next_nei).neighbors[2] = lower_tangent_id.into();
 
         self.tr_mut(right).neighbors[1] = merge_edge_id.into();
         self.tr_mut(left).neighbors[2] = merge_edge_id.into();
@@ -336,6 +344,7 @@ impl Delaunay{
                     }else if self.circumcircle_contain( (self.tr(merge_edge_id).points.0, self.tr(merge_edge_id).points.1, self.tr(l).points.1), self.tr(r).points.0) {
                         self.merge_candidate_r(merge_edge_id, r);
                     }else{
+                        println!("{:?}", (r, l));
                         panic!("Delaunay::merge: cound not add either of candidates!");
                     }
                 },
@@ -345,6 +354,15 @@ impl Delaunay{
             }
         }
 
+        // repair rightmost and leftmost edges since they could have been transformed into
+        // triangles
+        if self.tr(self.triangles[to*2-2].neighbors[1]).points.2.is_some(){
+            // rightmost replaced by upper tanget
+            self.triangles[to*2-2].neighbors[1] = merge_edge_id.into();
+        }
+        if self.tr(self.triangles[to*2-2].neighbors[0]).points.2.is_some(){
+            self.triangles[to*2-2].neighbors[0] = lower_tangent_id.into();
+        }
     }
 
     /// find index of ghost triangle, containing rightmost point at index 0
@@ -399,7 +417,7 @@ impl Delaunay{
         let l = self.edge_counterclockwise(merge_edge_id);
         let r = self.edge_clockwise(merge_edge_id);
         
-        if self.is_clockwise_index(self.tr(l).points.0, self.tr(r).points.1, self.tr(r).points.0){
+        if !self.is_counterclockwise_index(self.tr(l).points.0, self.tr(r).points.1, self.tr(r).points.0){
             None
         }else{
             while self.circumcircle_contain_next_candidate(r, self.tr(l).points.0){
@@ -414,7 +432,7 @@ impl Delaunay{
         let l = self.edge_counterclockwise(merge_edge_id);
         let r = self.edge_clockwise(merge_edge_id);
         
-        if self.is_clockwise_index(self.tr(l).points.1, self.tr(l).points.0, self.tr(r).points.1){
+        if !self.is_counterclockwise_index(self.tr(l).points.1, self.tr(l).points.0, self.tr(r).points.1){
             None
         }else{
             while self.circumcircle_contain_next_candidate(l, self.tr(r).points.1){
@@ -426,10 +444,45 @@ impl Delaunay{
     }
 
     fn merge_candidate_r(&mut self, merge_edge_id: EdgeIndex, candidate: EdgeIndex){
-        // TODO
+        let b = self.tr(merge_edge_id).neighbors[0];
+        let b_id = self.find_neighbor_id(b, merge_edge_id);
+
+        let prev = self.tr(candidate).neighbors[2];
+        self.tr_mut(merge_edge_id).neighbors[2] = prev;
+        self.tr_mut(prev).neighbors[1] = merge_edge_id.into();
+
+        self.tr_mut(merge_edge_id).neighbors[0] = candidate.into();
+        let prev_point = self.tr(candidate).points.0;
+        self.tr_mut(merge_edge_id).points.0 = prev_point;
+
+        let points = (self.tr(merge_edge_id).points.1, self.tr(candidate).points.1, Some(self.tr(candidate).points.0));
+        self.tr_mut(candidate).points = points;
+
+        self.tr_mut(candidate).neighbors[1] = merge_edge_id.into();
+        self.tr_mut(candidate).neighbors[2] = b;
+
+        self.tr_mut(b).neighbors[b_id] = candidate.into();
     }
+
     fn merge_candidate_l(&mut self, merge_edge_id: EdgeIndex, candidate: EdgeIndex){
-        // TODO
+        let b = self.tr(merge_edge_id).neighbors[0];
+        let b_id = self.find_neighbor_id(b, merge_edge_id);
+
+        let next = self.tr(candidate).neighbors[1];
+        self.tr_mut(merge_edge_id).neighbors[1] = next;
+        self.tr_mut(next).neighbors[2] = merge_edge_id.into();
+
+        self.tr_mut(merge_edge_id).neighbors[0] = candidate.into();
+        let next_point = self.tr(candidate).points.1;
+        self.tr_mut(merge_edge_id).points.1 = next_point;
+
+        let points = (self.tr(merge_edge_id).points.0, self.tr(candidate).points.1, Some(self.tr(candidate).points.0));
+        self.tr_mut(candidate).points = points;
+
+        self.tr_mut(candidate).neighbors[1] = b;
+        self.tr_mut(candidate).neighbors[2] = merge_edge_id.into();
+
+        self.tr_mut(b).neighbors[b_id] = candidate.into();
     }
 
     fn circumcircle_contain_next_candidate(&self, edge: EdgeIndex, third_point: PointIndex)->bool{
@@ -518,7 +571,6 @@ impl Delaunay{
 
         self.tr_mut(o).neighbors[0] = on;
 
-        println!("{:?}", (o_id, self.tr(o)));
         let (o_points, edge_points) = match o_id{ // since opposite triangle should contain all three points unwrap() is safe
             0 => (
                 (self.tr(o).points.0, self.tr(o).points.2.unwrap(), None),
@@ -1066,6 +1118,107 @@ mod tests {
         d.build_3points(3);
 
         d
+    }
+
+    fn prepare_diagram2() -> Delaunay{
+        let points = vec![
+            Point::new(2.0, 2.0),
+            Point::new(3.0, 2.0),
+            Point::new(3.0, 3.0),
+
+            Point::new(4.0, -2.0),
+            Point::new(4.0, 5.0),
+            Point::new(6.0, 1.0)
+        ];
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(12, TriangleLike::default());
+        d.build_3points(0);
+        d.build_3points(3);
+
+        d
+    }
+
+    #[test]
+    fn test_merge(){
+        let mut d = prepare_diagram2();
+
+        d.merge(0, 3, 6);
+
+        // triangles
+        assert_eq!(d.tr(TriangleIndex(0)), &TriangleLike{
+            points: (PointIndex(0), PointIndex(1), Some(PointIndex(2))),
+            neighbors: [TriangleIndex(1), TriangleIndex(2), TriangleIndex(3)]
+        });
+        assert_eq!(d.tr(TriangleIndex(1)), &TriangleLike{
+            points: (PointIndex(5), PointIndex(2), Some(PointIndex(1))),
+            neighbors: [TriangleIndex(0), TriangleIndex(8), TriangleIndex(6)]
+        });
+        assert_eq!(d.tr(TriangleIndex(2)), &TriangleLike{
+            points: (PointIndex(4), PointIndex(0), Some(PointIndex(2))),
+            neighbors: [TriangleIndex(0), TriangleIndex(6), TriangleIndex(5)]
+        });
+        assert_eq!(d.tr(TriangleIndex(3)), &TriangleLike{
+            points: (PointIndex(3), PointIndex(1), Some(PointIndex(0))),
+            neighbors: [TriangleIndex(0), TriangleIndex(4), TriangleIndex(8)]
+        });
+        assert_eq!(d.tr(TriangleIndex(6)), &TriangleLike{
+            points: (PointIndex(2), PointIndex(5), Some(PointIndex(4))),
+            neighbors: [TriangleIndex(7), TriangleIndex(2), TriangleIndex(1)]
+        });
+        assert_eq!(d.tr(TriangleIndex(8)), &TriangleLike{
+            points: (PointIndex(1), PointIndex(3), Some(PointIndex(5))),
+            neighbors: [TriangleIndex(9), TriangleIndex(1), TriangleIndex(3)]
+        });
+
+        // edges
+        assert_eq!(d.tr(TriangleIndex(4)), &TriangleLike{
+            points: (PointIndex(0), PointIndex(3), None),
+            neighbors: [TriangleIndex(3), TriangleIndex(9), TriangleIndex(5)]
+        });
+        assert_eq!(d.tr(TriangleIndex(5)), &TriangleLike{
+            points: (PointIndex(4), PointIndex(0), None),
+            neighbors: [TriangleIndex(2), TriangleIndex(4), TriangleIndex(7)]
+        });
+        assert_eq!(d.tr(TriangleIndex(7)), &TriangleLike{
+            points: (PointIndex(5), PointIndex(4), None),
+            neighbors: [TriangleIndex(6), TriangleIndex(5), TriangleIndex(9)]
+        });
+        assert_eq!(d.tr(TriangleIndex(9)), &TriangleLike{
+            points: (PointIndex(3), PointIndex(5), None),
+            neighbors: [TriangleIndex(8), TriangleIndex(7), TriangleIndex(4)]
+        });
+
+        test_for_delaunay_triangulation(&d);
+    }
+
+    fn test_for_delaunay_triangulation(d: &Delaunay){
+        let mut edges_count = 0;
+        let mut some_edge = None;
+        for i in 0..(d.points.len()*2-2){
+            let tr_id = TriangleIndex(i);
+            if d.tr(tr_id).points.2.is_some(){
+                // Triangle should contain no point
+                for i in 0..d.points.len(){
+                    let triangle = d.tr(tr_id).points;
+                    let triangle = (triangle.0, triangle.1, triangle.2.unwrap());
+                    assert!(!d.circumcircle_contain(triangle, PointIndex(i)), "'Triangle should contain not point' constrait violated");
+                }
+            }else{
+                some_edge = Some(tr_id);
+                edges_count += 1;
+            }
+        }
+
+        let some_edge = EdgeIndex::new(d, some_edge.unwrap());
+        let mut current = some_edge;
+        loop{
+            current = d.edge_clockwise(current);
+            edges_count -= 1;
+            if current == some_edge{
+                break;
+            }
+        }
+        assert_eq!(edges_count, 0);
     }
 
 }

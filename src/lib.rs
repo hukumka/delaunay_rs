@@ -1,3 +1,5 @@
+#![feature(test)]
+
 use std::ops::Range;
 use std::cmp::Ordering;
 
@@ -304,9 +306,6 @@ impl Delaunay{
         let left = self.find_rightmost_edge(from..sep);
         let right = self.find_leftmost_edge(sep..to);
 
-        println!("left: {:?}", self.tr(left));
-        println!("right: {:?}", self.tr(right));
-
         // save new leftmost edge
         self.triangles[to*2 - 2].neighbors[0] = self.triangles[sep*2 - 2].neighbors[0];
 
@@ -365,7 +364,6 @@ impl Delaunay{
             self.triangles[to*2-2].neighbors[1] = merge_edge_id.into();
         }
         if self.tr(self.triangles[to*2-2].neighbors[0]).points.2.is_some(){
-            println!("lower tangent: {:?}", self.tr(lower_tangent_id));
             self.triangles[to*2-2].neighbors[0] = merge_edge_id.into();
         }
     }
@@ -639,16 +637,23 @@ fn circumcircle_contain((a, b, c): (&Point, &Point, &Point), d: &Point)->bool{
     );
     let det = mat.determinant();
 
+    //println!("det = {}", det);
+
+
     if is_counterclockwise(a, b, c){
-        det > 0.0
+        det > 0.0000001 // compare to zero, excluding case then 4 points on one circle work as circumcircle of any 3 points contain forth.
+        // which is impossible in math, but possible cause of floating point error
     }else{
-        det < 0.0
+        det < 0.0000001
     }
 }
 
 
 #[cfg(test)]
 mod tests {
+    extern crate test;
+    use self::test::Bencher;
+
     use super::*;
     extern crate rand;
     use self::rand::distributions::{IndependentSample, Range};
@@ -1248,7 +1253,7 @@ mod tests {
         test_random_delaunay_of_size(5);
         test_random_delaunay_of_size(10);
         test_random_delaunay_of_size(20);
-        test_random_delaunay_of_size(50);
+        test_random_delaunay_of_size(100);
     }
 
 
@@ -1297,5 +1302,31 @@ mod tests {
         let d = Delaunay::new(points);
         test_for_delaunay_triangulation(&d);
     }
+
+
+    #[bench]
+    fn random_delaunay_bench_100(b: &mut Bencher){
+        b.iter(||{
+            let points = random_point_set((0, 1000, 0, 1000), 100);
+            Delaunay::new(points)
+        });
+    }
+
+    #[bench]
+    fn random_delaunay_bench_1000(b: &mut Bencher){
+        b.iter(||{
+            let points = random_point_set((0, 1000, 0, 1000), 1000);
+            Delaunay::new(points)
+        });
+    }
+
+    #[bench]
+    fn random_delaunay_bench_10000(b: &mut Bencher){
+        b.iter(||{
+            let points = random_point_set((0, 1000, 0, 1000), 10000);
+            Delaunay::new(points)
+        });
+    }
+
 
 }

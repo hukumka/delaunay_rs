@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 
 
 extern crate cgmath;
+use std::fmt;
 use cgmath::prelude::*;
 
 type Point = cgmath::Point2<f64>;
@@ -191,8 +192,8 @@ impl Delaunay{
 
         // store rightmost and left most edges
         let reversed_id = TriangleIndex(start*2 + 2); // same as end*2 - 2, since end == start+2
-        self.tr_mut(reversed_id).neighbors[0] = i1; // t1 contain leftmost point as .0
-        self.tr_mut(reversed_id).neighbors[1] = i1; // t1 contain rightmost point as .1
+        self.tr_mut(reversed_id).neighbors[0] = i2; // t2 contain leftmost point as .1
+        self.tr_mut(reversed_id).neighbors[1] = i2; // t2 contain rightmost point as .0
     }
 
     /// Construct triangulation on 3 points
@@ -225,8 +226,8 @@ impl Delaunay{
 
             // store rightmost and left most edges
             let reversed_id = TriangleIndex(start*2 + 4); // same as end*2 - 2, since end == start+3
-            self.tr_mut(reversed_id).neighbors[0] = tr_ids[0]; // tr_ids[0] contain leftmost point as .0
-            self.tr_mut(reversed_id).neighbors[1] = tr_ids[1]; // tr_ids[1] contain rightmost point as .1
+            self.tr_mut(reversed_id).neighbors[0] = tr_ids[3]; // tr_ids[3] contain leftmost point as .1
+            self.tr_mut(reversed_id).neighbors[1] = tr_ids[2]; // tr_ids[2] contain rightmost point as .0
         }else{
             // real triangle and 3 ghost triangles by its edges
             
@@ -256,11 +257,11 @@ impl Delaunay{
 
             // store rightmost and left most edges
             let reversed_id = TriangleIndex(start*2 + 4); // same as end*2 - 2, since end == start+3
-            self.tr_mut(reversed_id).neighbors[0] = tr_ids[3]; // tr_ids[3] contain leftmost point as .0
+            self.tr_mut(reversed_id).neighbors[0] = tr_ids[2]; // tr_ids[2] contain leftmost point as .1
             if self.p(p_ids[1]).x <= self.p(p_ids[2]).x{
-                self.tr_mut(reversed_id).neighbors[1] = tr_ids[1]; // tr_ids[2] contain leftmost point as .1
+                self.tr_mut(reversed_id).neighbors[1] = tr_ids[2]; // tr_ids[2] contain rightmost point as .0
             }else{
-                self.tr_mut(reversed_id).neighbors[1] = tr_ids[3]; // tr_ids[1] contain leftmost point as .1
+                self.tr_mut(reversed_id).neighbors[1] = tr_ids[1]; // tr_ids[1] contain rightmost point as .0
             }
         }
     }
@@ -303,8 +304,11 @@ impl Delaunay{
         let left = self.find_rightmost_edge(from..sep);
         let right = self.find_leftmost_edge(sep..to);
 
+        println!("left: {:?}", self.tr(left));
+        println!("right: {:?}", self.tr(right));
+
         // save new leftmost edge
-        self.triangles[to*2 - 2].neighbors[0] = left.into();
+        self.triangles[to*2 - 2].neighbors[0] = self.triangles[sep*2 - 2].neighbors[0];
 
         let (left, right) = self.find_lower_tangent(left, right);
 
@@ -313,25 +317,26 @@ impl Delaunay{
         let merge_edge_id = EdgeIndex(sep*2 - 1); // for time of merge will be for moving edge there new triangles will appear
 
         let lower_tangent = TriangleLike{
-            points: (self.tr(left).points.0, self.tr(right).points.1, None),
-            neighbors: [merge_edge_id.into(), self.edge_counterclockwise(right).into(), self.edge_clockwise(left).into()]
+            points: (self.tr(left).points.1, self.tr(right).points.0, None),
+            neighbors: [merge_edge_id.into(), right.into(), left.into()]
         };
 
         let merge_edge = TriangleLike{
-            points: (self.tr(right).points.1, self.tr(left).points.0, None),
-            neighbors: [lower_tangent_id.into(), left.into(), right.into()]
+            points: (self.tr(right).points.0, self.tr(left).points.1, None),
+            neighbors: [lower_tangent_id.into(), self.edge_counterclockwise(left).into(), self.edge_clockwise(right).into()]
         };
 
         *self.tr_mut(lower_tangent_id) = lower_tangent;
         *self.tr_mut(merge_edge_id) = merge_edge; // once we merged all we could, merge_edge will became upper_tangent
 
-        let lower_prev_nei = self.edge_clockwise(left);
-        let lower_next_nei = self.edge_counterclockwise(right);
-        self.tr_mut(lower_prev_nei).neighbors[1] = lower_tangent_id.into();
-        self.tr_mut(lower_next_nei).neighbors[2] = lower_tangent_id.into();
+        let merge_neig_left = self.edge_counterclockwise(left);
+        let merge_neig_right = self.edge_clockwise(right);
+        self.tr_mut(merge_neig_left).neighbors[2] = merge_edge_id.into();
+        self.tr_mut(merge_neig_right).neighbors[1] = merge_edge_id.into();
 
-        self.tr_mut(right).neighbors[1] = merge_edge_id.into();
-        self.tr_mut(left).neighbors[2] = merge_edge_id.into();
+        self.tr_mut(left).neighbors[1] = lower_tangent_id.into();
+        self.tr_mut(right).neighbors[2] = lower_tangent_id.into();
+
 
         loop{
             let right_candidat = self.next_right_candidate(merge_edge_id);
@@ -344,7 +349,6 @@ impl Delaunay{
                     }else if self.circumcircle_contain( (self.tr(merge_edge_id).points.0, self.tr(merge_edge_id).points.1, self.tr(l).points.1), self.tr(r).points.0) {
                         self.merge_candidate_r(merge_edge_id, r);
                     }else{
-                        println!("{:?}", (r, l));
                         panic!("Delaunay::merge: cound not add either of candidates!");
                     }
                 },
@@ -361,7 +365,8 @@ impl Delaunay{
             self.triangles[to*2-2].neighbors[1] = merge_edge_id.into();
         }
         if self.tr(self.triangles[to*2-2].neighbors[0]).points.2.is_some(){
-            self.triangles[to*2-2].neighbors[0] = lower_tangent_id.into();
+            println!("lower tangent: {:?}", self.tr(lower_tangent_id));
+            self.triangles[to*2-2].neighbors[0] = merge_edge_id.into();
         }
     }
 
@@ -382,10 +387,10 @@ impl Delaunay{
     /// left and right - 'ghost' triangles, containting points with clear line sight
     /// between them. left containt this point at .0, right at .1
     ///
-    /// result is left and right 'ghost' triangles, containing left point in .0 and right in .1 correspondingly.
+    /// result is left and right 'ghost' triangles, containing left point in .1 and right in .0 correspondingly.
     fn find_lower_tangent(&self, left: EdgeIndex, right: EdgeIndex)->(EdgeIndex, EdgeIndex){
-        let mut left = left;
-        let mut right = self.edge_clockwise(right);
+        let mut left = self.edge_clockwise(left);
+        let mut right = self.edge_counterclockwise(right);
         loop{
             while self.is_clockwise_index(self.tr(left).points.0, self.tr(left).points.1, self.tr(right).points.0){
                 left = self.edge_clockwise(left);
@@ -399,7 +404,7 @@ impl Delaunay{
                 break;
             }
         }
-        (self.edge_counterclockwise(left), self.edge_clockwise(right))
+        (left, right)
     }
 
     /// find next counterclockwise ghost triangle on hull
@@ -645,6 +650,8 @@ fn circumcircle_contain((a, b, c): (&Point, &Point, &Point), d: &Point)->bool{
 #[cfg(test)]
 mod tests {
     use super::*;
+    extern crate rand;
+    use self::rand::distributions::{IndependentSample, Range};
 
     #[test]
     fn test_sort_points(){
@@ -865,11 +872,11 @@ mod tests {
         d.build_2points(0);
         d.build_2points(2);
 
-        assert_eq!(d.triangles[2].neighbors[0], TriangleIndex(0));
-        assert_eq!(d.triangles[2].neighbors[1], TriangleIndex(0));
+        assert_eq!(d.triangles[2].neighbors[0], TriangleIndex(1));
+        assert_eq!(d.triangles[2].neighbors[1], TriangleIndex(1));
 
-        assert_eq!(d.triangles[6].neighbors[0], TriangleIndex(4));
-        assert_eq!(d.triangles[6].neighbors[1], TriangleIndex(4));
+        assert_eq!(d.triangles[6].neighbors[0], TriangleIndex(5));
+        assert_eq!(d.triangles[6].neighbors[1], TriangleIndex(5));
 
         // test for build3 triangle
         let points = vec![
@@ -886,11 +893,11 @@ mod tests {
         d.build_3points(0);
         d.build_3points(3);
 
-        assert_eq!(d.triangles[4].neighbors[0], TriangleIndex(3));
-        assert_eq!(d.triangles[4].neighbors[1], TriangleIndex(3));
+        assert_eq!(d.triangles[4].neighbors[0], TriangleIndex(2));
+        assert_eq!(d.triangles[4].neighbors[1], TriangleIndex(1));
 
-        assert_eq!(d.triangles[10].neighbors[0], TriangleIndex(9));
-        assert_eq!(d.triangles[10].neighbors[1], TriangleIndex(7));
+        assert_eq!(d.triangles[10].neighbors[0], TriangleIndex(8));
+        assert_eq!(d.triangles[10].neighbors[1], TriangleIndex(8));
 
         // test for build3 line
         let points = vec![
@@ -907,18 +914,23 @@ mod tests {
         d.build_3points(0);
         d.build_3points(3);
 
-        assert_eq!(d.triangles[4].neighbors[0], TriangleIndex(0));
-        assert_eq!(d.triangles[4].neighbors[1], TriangleIndex(1));
+        assert_eq!(d.triangles[4].neighbors[0], TriangleIndex(3));
+        assert_eq!(d.triangles[4].neighbors[1], TriangleIndex(2));
 
-        assert_eq!(d.triangles[10].neighbors[0], TriangleIndex(6));
+        assert_eq!(d.triangles[10].neighbors[0], TriangleIndex(9));
+        assert_eq!(d.triangles[10].neighbors[1], TriangleIndex(8));
+
+
+        // test following invariant for merge
+        let mut d = prepare_diagram2();
+
+        d.merge(0, 3, 6);
+        assert_eq!(d.triangles[10].neighbors[0], TriangleIndex(5));
         assert_eq!(d.triangles[10].neighbors[1], TriangleIndex(7));
-
-
-        // TODO: test following invariant for merge once it finished
     }
 
     #[test]
-    fn test_find_lower_tangetn(){
+    fn test_find_lower_tangent(){
         let points = vec![
             Point::new(0.0, 0.0),
             Point::new(1.0, 0.0),
@@ -937,8 +949,8 @@ mod tests {
         let r = d.find_leftmost_edge(3..6);
         
         let (l, r) = d.find_lower_tangent(l, r);
-        assert_eq!(l, EdgeIndex(0));
-        assert_eq!(r, EdgeIndex(9));
+        assert_eq!(l, EdgeIndex(3));
+        assert_eq!(r, EdgeIndex(6));
     }
 
 
@@ -1219,6 +1231,71 @@ mod tests {
             }
         }
         assert_eq!(edges_count, 0);
+    }
+
+    fn test_random_delaunay_of_size(size: usize){
+        let iter_count = 100;
+        for _ in 0..iter_count{
+            let points = random_point_set((0, 1000, 0, 1000), size);
+            let d = Delaunay::new(points);
+
+            test_for_delaunay_triangulation(&d);
+        }
+    }
+
+    #[test]
+    fn test_random_delaunay(){
+        test_random_delaunay_of_size(5);
+        test_random_delaunay_of_size(10);
+        test_random_delaunay_of_size(20);
+        test_random_delaunay_of_size(50);
+    }
+
+
+    fn random_point_set(rect: (i64, i64, i64, i64), size: usize)->Vec<Point>{
+        let mut v = Vec::with_capacity(size);
+
+        let x_between = Range::new(rect.0, rect.1);
+        let y_between = Range::new(rect.2, rect.3);
+        let mut rng = rand::thread_rng();
+    
+        for _ in 0..size{
+            let x = x_between.ind_sample(&mut rng);
+            let y = y_between.ind_sample(&mut rng);
+            v.push(Point::new(x as f64, y as f64)); 
+        }
+        v
+    }
+    
+    #[test]
+    fn test_new(){
+        let points = vec![
+            Point::new(2.0, 1.0),
+            Point::new(3.0, 8.0),
+
+            Point::new(4.0, 8.0),
+            Point::new(5.0, 1.0),
+            Point::new(6.0, 5.0)
+        ];
+
+        //let d = Delaunay::new(points);
+        //test_for_delaunay_triangulation(&d);
+
+
+        let points = vec![
+            Point::new(2.41, 3.67),
+            Point::new(2.68, 4.30),
+            Point::new(3.11, 1.46),
+            Point::new(5.15, 1.47),
+            Point::new(5.63, 0.80),
+            Point::new(6.32, 7.64),
+            Point::new(7.02, 0.05),
+            Point::new(7.26, 0.59),
+            Point::new(8.34, 1.76),
+            Point::new(9.31, 5.10)
+        ];
+        let d = Delaunay::new(points);
+        test_for_delaunay_triangulation(&d);
     }
 
 }

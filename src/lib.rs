@@ -1,5 +1,3 @@
-#![feature(test)]
-
 use std::ops::Range;
 use std::cmp::Ordering;
 
@@ -651,9 +649,6 @@ fn circumcircle_contain((a, b, c): (&Point, &Point, &Point), d: &Point)->bool{
 
 #[cfg(test)]
 mod tests {
-    extern crate test;
-    use self::test::Bencher;
-
     use super::*;
     extern crate rand;
     use self::rand::distributions::{IndependentSample, Range};
@@ -969,7 +964,7 @@ mod tests {
         assert!(circumcircle_contain((&p1, &p2, &p3), &tp0));
         let tp1 = Point::new(0.0, -0.999999);
         assert!(circumcircle_contain((&p1, &p2, &p3), &tp1));
-        let tp2 = Point::new(0.0, -1.0);
+        let tp2 = Point::new(0.0, -1.000001);
         assert!(!circumcircle_contain((&p1, &p2, &p3), &tp2));
         let tp3 = Point::new(1.0, -1.0);
         assert!(!circumcircle_contain((&p1, &p2, &p3), &tp3));
@@ -1302,31 +1297,4 @@ mod tests {
         let d = Delaunay::new(points);
         test_for_delaunay_triangulation(&d);
     }
-
-
-    #[bench]
-    fn random_delaunay_bench_100(b: &mut Bencher){
-        b.iter(||{
-            let points = random_point_set((0, 1000, 0, 1000), 100);
-            Delaunay::new(points)
-        });
-    }
-
-    #[bench]
-    fn random_delaunay_bench_1000(b: &mut Bencher){
-        b.iter(||{
-            let points = random_point_set((0, 1000, 0, 1000), 1000);
-            Delaunay::new(points)
-        });
-    }
-
-    #[bench]
-    fn random_delaunay_bench_10000(b: &mut Bencher){
-        b.iter(||{
-            let points = random_point_set((0, 1000, 0, 1000), 10000);
-            Delaunay::new(points)
-        });
-    }
-
-
 }

@@ -5,7 +5,6 @@ use std::cmp::Ordering;
 
 
 extern crate cgmath;
-use std::fmt;
 use cgmath::prelude::*;
 
 type Point = cgmath::Point2<f64>;
@@ -459,7 +458,7 @@ impl Delaunay{
         self.tr_mut(merge_edge_id).points.0 = prev_point;
 
         let points = (self.tr(merge_edge_id).points.1, self.tr(candidate).points.1, Some(self.tr(candidate).points.0));
-        self.tr_mut(candidate).points = points;
+        self.tr_mut(candidate).points.2 = points;
 
         self.tr_mut(candidate).neighbors[1] = merge_edge_id.into();
         self.tr_mut(candidate).neighbors[2] = b;
@@ -1283,8 +1282,8 @@ mod tests {
             Point::new(6.0, 5.0)
         ];
 
-        //let d = Delaunay::new(points);
-        //test_for_delaunay_triangulation(&d);
+        let d = Delaunay::new(points);
+        test_for_delaunay_triangulation(&d);
 
 
         let points = vec![
@@ -1305,28 +1304,57 @@ mod tests {
 
 
     #[bench]
-    fn random_delaunay_bench_100(b: &mut Bencher){
+    fn random_delaunay_bench_5(b: &mut Bencher){
+        let points = random_point_set((0, 1000, 0, 1000), 5);
         b.iter(||{
-            let points = random_point_set((0, 1000, 0, 1000), 100);
-            Delaunay::new(points)
+            Delaunay::new(points.clone())
         });
     }
 
     #[bench]
-    fn random_delaunay_bench_1000(b: &mut Bencher){
+    fn build2_bench(b: &mut Bencher){
+        let points = vec![
+            Point::new(1.0, 1.0),
+            Point::new(2.0, 1.0)
+        ];
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(4, TriangleLike::default());
         b.iter(||{
-            let points = random_point_set((0, 1000, 0, 1000), 1000);
-            Delaunay::new(points)
+            d.build_2points(0);
+        });
+            
+    }
+
+    #[bench]
+    fn build3_bench(b: &mut Bencher){
+        let points = vec![
+            Point::new(0.0, 1.0),
+            Point::new(1.0, -1.0),
+            Point::new(1.2, 0.0)
+        ];
+        let mut d = Delaunay{points: points, triangles: vec![]};
+        d.triangles.resize(6, TriangleLike::default());
+        b.iter(||{
+            d.build_3points(0);
         });
     }
 
     #[bench]
-    fn random_delaunay_bench_10000(b: &mut Bencher){
+    fn merge_bench(b: &mut Bencher){
         b.iter(||{
-            let points = random_point_set((0, 1000, 0, 1000), 10000);
-            Delaunay::new(points)
+            let mut d = prepare_diagram2();
+            d.merge(0, 3, 6)
+
         });
     }
 
-
+    #[bench]
+    fn find_lower_tangent_bench(b: &mut Bencher){
+        b.iter(||{
+            let mut d = prepare_diagram2();
+            let left = d.find_rightmost_edge(0..3);
+            let right = d.find_leftmost_edge(3..6);
+            d.find_lower_tangent(left, right);
+        });
+    }
 }

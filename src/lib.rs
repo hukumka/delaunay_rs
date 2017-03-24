@@ -151,9 +151,8 @@ impl Delaunay{
     /// triangles kept in range.start*2..range..(end*2-2)
     /// triangles (end*2-2)..end*2 reserved
     /// 
-    /// TODO: leftmost and rightmost edges (edges containing leftmost point in .0 and rightmost in .1)
+    /// leftmost and rightmost edges (edges containing leftmost point in .0 and rightmost in .1)
     /// stored as in reserved triangle end*2-2 as neighbors[0] and neighbors[1] correspondingly
-    /// (merge)
     ///
     /// Divide and Conquer Gulbah-Stolfi algorithm
     fn build(&mut self, range: Range<usize>){

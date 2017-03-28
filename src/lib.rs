@@ -121,7 +121,6 @@ impl Delaunay{
         d
     }
 
-
     /// sort points in from left to right order
     ///
     /// if several points has similar x-coordinate, then sorting done by y-coordinate
@@ -152,7 +151,7 @@ impl Delaunay{
     /// triangles kept in range.start*2..range..(end*2-2)
     /// triangles (end*2-2)..end*2 reserved
     /// 
-    /// TODO: leftmost and rightmost edges (edges containing leftmost point in .0 and rightmost in .1)
+    /// leftmost and rightmost edges (edges containing leftmost point in .0 and rightmost in .1)
     /// stored as in reserved triangle end*2-2 as neighbors[0] and neighbors[1] correspondingly
     /// (merge)
     ///
@@ -458,7 +457,7 @@ impl Delaunay{
         self.tr_mut(merge_edge_id).points.0 = prev_point;
 
         let points = (self.tr(merge_edge_id).points.1, self.tr(candidate).points.1, Some(self.tr(candidate).points.0));
-        self.tr_mut(candidate).points.2 = points;
+        self.tr_mut(candidate).points = points;
 
         self.tr_mut(candidate).neighbors[1] = merge_edge_id.into();
         self.tr_mut(candidate).neighbors[2] = b;
@@ -1306,6 +1305,14 @@ mod tests {
     #[bench]
     fn random_delaunay_bench_5(b: &mut Bencher){
         let points = random_point_set((0, 1000, 0, 1000), 5);
+        b.iter(||{
+            Delaunay::new(points.clone())
+        });
+    }
+
+    #[bench]
+    fn random_delaunay_bench_400000(b: &mut Bencher){
+        let points = random_point_set((0, 1000, 0, 1000), 400000);
         b.iter(||{
             Delaunay::new(points.clone())
         });

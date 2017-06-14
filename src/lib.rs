@@ -6,7 +6,7 @@ extern crate cgmath;
 use std::fmt;
 use cgmath::prelude::*;
 
-type Point = cgmath::Point2<f64>;
+pub type Point = cgmath::Point2<f64>;
 type Vector = cgmath::Vector2<f64>;
 
 
@@ -110,9 +110,24 @@ impl Delaunay{
     pub fn new(points: Vec<Point>)->Delaunay{
         let mut points = points;
         Delaunay::sort_points(&mut points);
+        Self::from_sorted(points)
+    }
+
+    pub fn data(&self)->Vec<(usize, usize, usize)>{
+        self.triangles.iter().filter_map(|x|{
+            if let (a, b, Some(c)) = x.points{
+                Some((a.0, b.0, c.0))
+            }else{
+                None
+            }
+        }).collect::<Vec<_>>()
+    }
+
+    /// Construct Delaunay triangulation from sorted set of points
+    pub fn from_sorted(points: Vec<Point>)->Delaunay{
         let len = points.len();
         let mut d = Delaunay{
-            points: points, 
+            points: points.clone(),
             triangles: Vec::with_capacity(len*2)
         };
         d.triangles.resize(len*2, TriangleLike::default());
@@ -120,12 +135,11 @@ impl Delaunay{
         d
     }
 
-
     /// sort points in from left to right order
     ///
     /// if several points has similar x-coordinate, then sorting done by y-coordinate
     /// removes duplicate points
-    fn sort_points(points: &mut Vec<Point>){
+    pub fn sort_points(points: &mut Vec<Point>){
         points.sort_by(|a, b|{
             debug_assert!(
                 a.x.is_finite()
@@ -143,6 +157,29 @@ impl Delaunay{
             }
         });
         points.dedup();
+    }
+
+    pub fn sort_point_indexes(points: &Vec<Point>)->Vec<usize>{
+        let mut l: Vec<usize> = (0..points.len()).collect();
+        l.sort_by(|a, b|{
+            let a = *a;
+            let b = *b;
+            debug_assert!(
+                points[a].x.is_finite()
+                && points[a].y.is_finite()
+                && points[b].x.is_finite()
+                && points[b].y.is_finite()
+                , "Delaunay do not support infinite and NaN point coordinates."
+            );
+            // since none coordinate is NaN unwrap is correct
+            let x_cmp = points[a].x.partial_cmp(&points[b].x).unwrap();
+            if x_cmp == Ordering::Equal{
+                points[a].y.partial_cmp(&points[b].y).unwrap()
+            }else{
+                x_cmp
+            }
+        });
+        l
     }
 
     /// Construct triangulation on selected slice of points
@@ -416,7 +453,7 @@ impl Delaunay{
     fn next_right_candidate(&mut self, merge_edge_id: EdgeIndex)->Option<EdgeIndex>{
         let l = self.edge_counterclockwise(merge_edge_id);
         let r = self.edge_clockwise(merge_edge_id);
-        
+
         if !self.is_counterclockwise_index(self.tr(l).points.0, self.tr(r).points.1, self.tr(r).points.0){
             None
         }else{
@@ -645,6 +682,39 @@ fn circumcircle_contain((a, b, c): (&Point, &Point, &Point), d: &Point)->bool{
     }
 }
 
+
+pub fn test_for_delaunay_triangulation(d: &Delaunay){
+    let mut edges_count = 0;
+    let mut some_edge = None;
+    for i in 0..(d.points.len()*2-2){
+        let tr_id = TriangleIndex(i);
+        if d.tr(tr_id).points.2.is_some(){
+            // Triangle should contain no point
+            for i in 0..d.points.len(){
+                let triangle = d.tr(tr_id).points;
+                let triangle = (triangle.0, triangle.1, triangle.2.unwrap());
+                assert!(!d.circumcircle_contain(triangle, PointIndex(i)), "'Triangle should contain not point' constrait violated");
+            }
+        }else{
+            some_edge = Some(tr_id);
+            edges_count += 1;
+        }
+        if i%1000 == 0{
+            println!("{}", i);
+        }
+    }
+    println!("{} edges, {} triangles", edges_count, d.points.len()*2-2-edges_count);
+    let some_edge = EdgeIndex::new(d, some_edge.unwrap());
+    let mut current = some_edge;
+    loop{
+        current = d.edge_clockwise(current);
+        edges_count -= 1;
+        if current == some_edge{
+            break;
+        }
+    }
+    assert_eq!(edges_count, 0);
+}
 
 #[cfg(test)]
 mod tests {
@@ -1202,35 +1272,6 @@ mod tests {
         test_for_delaunay_triangulation(&d);
     }
 
-    fn test_for_delaunay_triangulation(d: &Delaunay){
-        let mut edges_count = 0;
-        let mut some_edge = None;
-        for i in 0..(d.points.len()*2-2){
-            let tr_id = TriangleIndex(i);
-            if d.tr(tr_id).points.2.is_some(){
-                // Triangle should contain no point
-                for i in 0..d.points.len(){
-                    let triangle = d.tr(tr_id).points;
-                    let triangle = (triangle.0, triangle.1, triangle.2.unwrap());
-                    assert!(!d.circumcircle_contain(triangle, PointIndex(i)), "'Triangle should contain not point' constrait violated");
-                }
-            }else{
-                some_edge = Some(tr_id);
-                edges_count += 1;
-            }
-        }
-
-        let some_edge = EdgeIndex::new(d, some_edge.unwrap());
-        let mut current = some_edge;
-        loop{
-            current = d.edge_clockwise(current);
-            edges_count -= 1;
-            if current == some_edge{
-                break;
-            }
-        }
-        assert_eq!(edges_count, 0);
-    }
 
     fn test_random_delaunay_of_size(size: usize){
         let iter_count = 100;

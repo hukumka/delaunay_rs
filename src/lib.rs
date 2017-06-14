@@ -1,13 +1,14 @@
 #![feature(test)]
+extern crate rand;
 
 use std::ops::Range;
 use std::cmp::Ordering;
-
+use rand::distributions::IndependentSample;
 
 extern crate cgmath;
 use cgmath::prelude::*;
 
-type Point = cgmath::Point2<f64>;
+pub type Point = cgmath::Point2<f64>;
 type Vector = cgmath::Vector2<f64>;
 
 
@@ -83,13 +84,13 @@ impl Into<TriangleIndex> for EdgeIndex{
 ///     neighbors[2] - previous counterclockwise edge on hull (next clockwise)
 ///     points kept in counterclockwise order on hull
 #[derive(Debug, Clone, PartialEq)]
-struct TriangleLike{
+pub struct TriangleLike{
     neighbors: [TriangleIndex; 3],
     points: (PointIndex, PointIndex, Option<PointIndex>)
 }
 impl TriangleLike{
     /// for resize fashion
-    fn default()->TriangleLike{
+    pub fn default()->TriangleLike{
         TriangleLike{
             neighbors: [TriangleIndex(0), TriangleIndex(0), TriangleIndex(0)],
             points: (PointIndex(0), PointIndex(0), None)
@@ -101,8 +102,8 @@ impl TriangleLike{
 /// Represent Delaunay triangulation
 #[derive(Debug)]
 pub struct Delaunay{
-    points: Vec<Point>,
-    triangles: Vec<TriangleLike>
+    pub points: Vec<Point>,
+    pub triangles: Vec<TriangleLike>
 }
 
 
@@ -125,7 +126,7 @@ impl Delaunay{
     ///
     /// if several points has similar x-coordinate, then sorting done by y-coordinate
     /// removes duplicate points
-    fn sort_points(points: &mut Vec<Point>){
+    pub fn sort_points(points: &mut Vec<Point>){
         points.sort_by(|a, b|{
             debug_assert!(
                 a.x.is_finite()
@@ -156,7 +157,7 @@ impl Delaunay{
     /// (merge)
     ///
     /// Divide and Conquer Gulbah-Stolfi algorithm
-    fn build(&mut self, range: Range<usize>){
+    pub fn build(&mut self, range: Range<usize>){
         match range.len(){
             2 => self.build_2points(range.start),
             3 => self.build_3points(range.start),
@@ -646,6 +647,51 @@ fn circumcircle_contain((a, b, c): (&Point, &Point, &Point), d: &Point)->bool{
     }
 }
 
+pub fn test_for_delaunay_triangulation(d: &Delaunay){
+    let mut edges_count = 0;
+    let mut some_edge = None;
+    for i in 0..(d.points.len()*2-2){
+        let tr_id = TriangleIndex(i);
+        if d.tr(tr_id).points.2.is_some(){
+            // Triangle should contain no point
+            for i in 0..d.points.len(){
+                let triangle = d.tr(tr_id).points;
+                let triangle = (triangle.0, triangle.1, triangle.2.unwrap());
+                assert!(!d.circumcircle_contain(triangle, PointIndex(i)), "'Triangle should contain not point' constrait violated");
+            }
+        }else{
+            some_edge = Some(tr_id);
+            edges_count += 1;
+        }
+    }
+
+    let some_edge = EdgeIndex::new(d, some_edge.unwrap());
+    let mut current = some_edge;
+    loop{
+        current = d.edge_clockwise(current);
+        edges_count -= 1;
+        if current == some_edge{
+            break;
+        }
+    }
+    assert_eq!(edges_count, 0);
+}
+
+pub fn random_point_set(rect: (i64, i64, i64, i64), size: usize)->Vec<Point>{
+    let mut v = Vec::with_capacity(size);
+
+    let x_between = rand::distributions::Range::new(rect.0, rect.1);
+    let y_between = rand::distributions::Range::new(rect.2, rect.3);
+    let mut rng = rand::thread_rng();
+
+    for _ in 0..size{
+        let x = x_between.ind_sample(&mut rng);
+        let y = y_between.ind_sample(&mut rng);
+        v.push(Point::new(x as f64, y as f64)); 
+    }
+    v
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -653,8 +699,7 @@ mod tests {
     use self::test::Bencher;
 
     use super::*;
-    extern crate rand;
-    use self::rand::distributions::{IndependentSample, Range};
+    extern crate time;
 
     #[test]
     fn test_sort_points(){
@@ -1206,36 +1251,6 @@ mod tests {
         test_for_delaunay_triangulation(&d);
     }
 
-    fn test_for_delaunay_triangulation(d: &Delaunay){
-        let mut edges_count = 0;
-        let mut some_edge = None;
-        for i in 0..(d.points.len()*2-2){
-            let tr_id = TriangleIndex(i);
-            if d.tr(tr_id).points.2.is_some(){
-                // Triangle should contain no point
-                for i in 0..d.points.len(){
-                    let triangle = d.tr(tr_id).points;
-                    let triangle = (triangle.0, triangle.1, triangle.2.unwrap());
-                    assert!(!d.circumcircle_contain(triangle, PointIndex(i)), "'Triangle should contain not point' constrait violated");
-                }
-            }else{
-                some_edge = Some(tr_id);
-                edges_count += 1;
-            }
-        }
-
-        let some_edge = EdgeIndex::new(d, some_edge.unwrap());
-        let mut current = some_edge;
-        loop{
-            current = d.edge_clockwise(current);
-            edges_count -= 1;
-            if current == some_edge{
-                break;
-            }
-        }
-        assert_eq!(edges_count, 0);
-    }
-
     fn test_random_delaunay_of_size(size: usize){
         let iter_count = 100;
         for _ in 0..iter_count{
@@ -1254,20 +1269,7 @@ mod tests {
     }
 
 
-    fn random_point_set(rect: (i64, i64, i64, i64), size: usize)->Vec<Point>{
-        let mut v = Vec::with_capacity(size);
-
-        let x_between = Range::new(rect.0, rect.1);
-        let y_between = Range::new(rect.2, rect.3);
-        let mut rng = rand::thread_rng();
     
-        for _ in 0..size{
-            let x = x_between.ind_sample(&mut rng);
-            let y = y_between.ind_sample(&mut rng);
-            v.push(Point::new(x as f64, y as f64)); 
-        }
-        v
-    }
     
     #[test]
     fn test_new(){
@@ -1355,4 +1357,5 @@ mod tests {
             d.find_lower_tangent(left, right);
         });
     }
+
 }

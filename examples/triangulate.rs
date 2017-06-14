@@ -7,7 +7,7 @@ use std::io::BufReader;
 use std::io::BufRead;
 use std::io::Write;
 
-use delaunay2::{Delaunay, Point, test_for_delaunay_triangulation};
+use delaunay2::{Delaunay, Point};
 
 
 fn main(){
@@ -33,17 +33,13 @@ fn main(){
 
         let points = read_data(&input);
         let shuffle = Delaunay::sort_point_indexes(&points);
-        let mut reverse_shuffle = shuffle.clone();
-        for (i, v) in shuffle.iter().enumerate(){
-            reverse_shuffle[*v] = i;
-        }
         let d = Delaunay::new(points);
 
         let triangles = d.data();
         let mut edges = vec![];
 
         for (a, b, c) in triangles{
-            let (a, b, c) = (reverse_shuffle[a], reverse_shuffle[b], reverse_shuffle[c]);
+            let (a, b, c) = (shuffle[a], shuffle[b], shuffle[c]);
             let pair = |a, b|{
                 if a < b{
                     (a, b)
@@ -59,7 +55,7 @@ fn main(){
         edges.dedup();
 
         for (a, b) in edges{
-            writeln!(output, "{}, {}", a, b);
+            writeln!(output, "{}, {}", a, b).unwrap();
         }
     }
 }

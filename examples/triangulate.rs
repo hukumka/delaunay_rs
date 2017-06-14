@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate quick_error;
+
 extern crate delaunay2;
 extern crate cgmath;
 
@@ -22,7 +25,7 @@ fn main(){
         println!("  where index is line number for point in input file");
     }else{
         let input = match File::open(&args[1]){
-            Ok(file) => file,
+            Ok(file) => fil,
             Err(..) => panic!("Unable to open input file {}", args[1])
         };
 
@@ -83,19 +86,26 @@ fn read_data(input: &File)->Vec<Point>{
 }
 
 
-fn read_point(buf: &str)->Result<Point, String>{
+quick_error!{
+    #[derive(Debug)]
+    enum ParseError{
+        ParseFloat(err: std::num::ParseFloatError){
+            from()
+        }
+        Other(err: String){
+            description(err)
+        }
+    }
+}
+
+
+fn read_point(buf: &str)->Result<Point, ParseError>{
     let strings: Vec<_> = buf.split(",").collect();
     if strings.len() != 2{
-        Err(format!("{}: 2 coordinates must be separated with coma", buf))
+        Err(ParseError::Other(format!("{}: 2 coordinates must be separated with coma", buf)))
     }else{
-        let x: f64 = match strings[0].trim().parse(){
-            Ok(x) => x,
-            Err(..) => return Err(format!("{}: coordinate must be floating point number", strings[0]))
-        };
-        let y: f64 = match strings[1].trim().parse(){
-            Ok(y) => y,
-            Err(..) => return Err(format!("{}: coordinate must be floating point number", strings[1]))
-        };
+        let x: f64 = strings[0].trim().parse() ?;
+        let y: f64 = strings[1].trim().parse() ?;
         Ok(Point::new(x, y))
     }
 }

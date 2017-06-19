@@ -1,11 +1,15 @@
 [package]
 name = "delaunay2"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Arnold Pavel <hukumka212@gmail.com>"]
+
+[profile.release]
+panic = 'abort'
 
 [dependencies]
 cgmath="0.9"
 rand="0.3"
-time="0.1"
+time = "0.1"
+quick-error = "1.2.0"
 
 [dev-dependencies]

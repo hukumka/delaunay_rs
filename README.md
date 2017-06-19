@@ -14,6 +14,7 @@ probaby won't be maintained and strongly not recommended to use in serious proje
 
 ### as rust library
 to use this in your rust project add following line to your [dependencies]
+
 delaunay2 = {git = "https://github.com/hukumka/delaunay_rs/", rev = "91263b1"}
 
 usage might be seen in examples

@@ -25,7 +25,7 @@ fn main(){
         println!("  where index is line number for point in input file");
     }else{
         let input = match File::open(&args[1]){
-            Ok(file) => fil,
+            Ok(file) => file,
             Err(..) => panic!("Unable to open input file {}", args[1])
         };
 

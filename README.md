@@ -1,6 +1,6 @@
 # delaunay_rs
 
-This library could be used to build [delaunay triangulation](https://github.com/hukumka/delaunay_rs/) of given set of points.
+This library could be used to build [delaunay triangulation](https://en.wikipedia.org/wiki/Delaunay_triangulation) of given set of points.
 
 ## warning!
 This library been developed for studing purpose, might contain several issues, 

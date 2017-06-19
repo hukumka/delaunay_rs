@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use rand::distributions::IndependentSample;
 
 extern crate cgmath;
+extern crate rand;
 use cgmath::prelude::*;
 
 pub type Point = cgmath::Point2<f64>;
@@ -681,35 +682,6 @@ fn circumcircle_contain((a, b, c): (&Point, &Point, &Point), d: &Point)->bool{
     }
 }
 
-pub fn test_for_delaunay_triangulation(d: &Delaunay){
-    let mut edges_count = 0;
-    let mut some_edge = None;
-    for i in 0..(d.points.len()*2-2){
-        let tr_id = TriangleIndex(i);
-        if d.tr(tr_id).points.2.is_some(){
-            // Triangle should contain no point
-            for i in 0..d.points.len(){
-                let triangle = d.tr(tr_id).points;
-                let triangle = (triangle.0, triangle.1, triangle.2.unwrap());
-                assert!(!d.circumcircle_contain(triangle, PointIndex(i)), "'Triangle should contain not point' constrait violated");
-            }
-        }else{
-            some_edge = Some(tr_id);
-            edges_count += 1;
-        }
-    }
-
-    let some_edge = EdgeIndex::new(d, some_edge.unwrap());
-    let mut current = some_edge;
-    loop{
-        current = d.edge_clockwise(current);
-        edges_count -= 1;
-        if current == some_edge{
-            break;
-        }
-    }
-    assert_eq!(edges_count, 0);
-}
 
 pub fn random_point_set(rect: (i64, i64, i64, i64), size: usize)->Vec<Point>{
     let mut v = Vec::with_capacity(size);
